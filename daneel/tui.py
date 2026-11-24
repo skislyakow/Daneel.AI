@@ -8,6 +8,7 @@ from rich.markup import escape
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.events import Click
 from textual.screen import ModalScreen
 from textual.widgets import Button, Header, Input, Static
 
@@ -16,6 +17,8 @@ from .core import Conversation, OllamaError
 from .i18n import ReplyLanguage, UILanguage, build_system_prompt, t
 from .theme import available_themes, register_themes
 from .tools import Arguments
+
+RIGHT_BUTTON = 3
 
 
 class ToolConfirmationScreen(ModalScreen[bool]):
@@ -220,6 +223,18 @@ class DaneelApp(App[None]):
         self._bindings.bind("ctrl+c", "quit", quit_text, priority=True)
         self._bindings.bind("ctrl+\u0441", "quit", quit_text, priority=True)
         self.refresh_bindings()
+
+    @on(Click)
+    async def handle_right_click(self, event: Click) -> None:
+        """Copy the current selection when the right mouse button is pressed."""
+        if event.button != RIGHT_BUTTON:
+            return
+        selected = self.screen.get_selected_text()
+        if selected:
+            self.copy_to_clipboard(selected)
+            await self._note(t(self.lang, "copied"))
+        else:
+            await self._note(t(self.lang, "nothing_selected"))
 
     async def _note(self, text: str) -> None:
         """Show a local system message in the chat log."""

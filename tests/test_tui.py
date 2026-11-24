@@ -226,6 +226,42 @@ async def test_tui_confirmation_tab_then_enter_denies() -> None:
     await http.aclose()
 
 
+async def test_right_click_copies_selected_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        with monkeypatch.context() as patch:
+            patch.setattr(app.screen, "get_selected_text", lambda: "selected text")
+            await pilot.click("#log", button=3)
+
+        assert app.clipboard == "selected text"
+        app.screen.text_select_all()
+        assert "Copied to clipboard." in app.screen.get_selected_text()
+
+    await http.aclose()
+
+
+async def test_right_click_without_selection_does_not_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    http = mock_http()
+    app = DaneelApp(
+        Conversation(OllamaClient(client=http)), ui_language="ru"
+    )
+
+    async with app.run_test() as pilot:
+        with monkeypatch.context() as patch:
+            patch.setattr(app.screen, "get_selected_text", lambda: None)
+            await pilot.click("#log", button=3)
+
+        assert app.clipboard == ""
+        app.screen.text_select_all()
+        assert "Ничего не выделено." in app.screen.get_selected_text()
+
+    await http.aclose()
+
+
 async def test_tui_theme_command() -> None:
     http = mock_http()
     app = DaneelApp(Conversation(OllamaClient(client=http)))
