@@ -34,7 +34,7 @@ def cli_confirmation(
         answer = await asyncio.to_thread(input_fn, prompt)
         if answer.strip().lower() in AFFIRMATIVE:
             return True
-        output_fn(t(language, "cli_tool_denied", name=name) + "\n")
+        output_fn(t(language, "tool_denied", name=name) + "\n")
         return False
 
     return confirm

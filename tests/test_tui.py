@@ -1,10 +1,13 @@
+import asyncio
 import json
 
 import httpx
+import pytest
 from textual.widgets import Input, Static
 
 from daneel.core import Conversation, OllamaClient
 from daneel.i18n import STRINGS, build_system_prompt
+from daneel.tools import FunctionTool, ToolRegistry
 from daneel.tui import DaneelApp
 
 
@@ -103,6 +106,124 @@ async def test_cyrillic_ctrl_c_quits() -> None:
         await pilot.pause()
 
     assert not app.is_running
+
+
+def tool_call_app(
+    ui_language: str = "en",
+) -> tuple[httpx.AsyncClient, DaneelApp, list[dict]]:
+    executed: list[dict] = []
+    requests: list[dict] = []
+
+    async def runner(arguments: dict) -> str:
+        executed.append(arguments)
+        return "ok"
+
+    tool = FunctionTool(
+        name="echo",
+        description="Echo a value",
+        parameters={
+            "type": "object",
+            "properties": {"value": {"type": "string"}},
+            "required": ["value"],
+        },
+        runner=runner,
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            body = json.dumps(
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "call",
+                                "function": {
+                                    "index": 0,
+                                    "name": "echo",
+                                    "arguments": {"value": "hi"},
+                                },
+                            }
+                        ],
+                    },
+                    "done": True,
+                }
+            )
+        else:
+            body = json.dumps(
+                {"message": {"role": "assistant", "content": "Готово"}, "done": True},
+                ensure_ascii=False,
+            )
+        return httpx.Response(200, text=body + "\n")
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    conversation = Conversation(OllamaClient(client=http), tools=ToolRegistry([tool]))
+    return http, DaneelApp(conversation, ui_language=ui_language), executed
+
+
+async def test_tui_confirmation_allows_tool_with_yes_key() -> None:
+    http, app, executed = tool_call_app()
+
+    async with app.run_test() as pilot:
+        send_task = asyncio.create_task(app.send("привет"))
+        await asyncio.sleep(0.2)
+
+        await pilot.press("enter")
+        await send_task
+
+        assert executed == [{"value": "hi"}]
+
+    await http.aclose()
+
+
+@pytest.mark.parametrize("key", ["escape", "n"])
+async def test_tui_confirmation_denial_keys(key: str) -> None:
+    http, app, executed = tool_call_app()
+
+    async with app.run_test() as pilot:
+        send_task = asyncio.create_task(app.send("привет"))
+        await asyncio.sleep(0.2)
+        await pilot.press(key)
+        await send_task
+
+        assert executed == []
+        results = [m.content for m in app.conversation.messages if m.role == "tool"]
+        assert results and "denied" in results[0]
+
+    await http.aclose()
+
+
+async def test_tui_confirmation_enter_approves() -> None:
+    http, app, executed = tool_call_app("ru")
+
+    async with app.run_test() as pilot:
+        send_task = asyncio.create_task(app.send("привет"))
+        await asyncio.sleep(0.2)
+
+        await pilot.press("enter")
+        await send_task
+
+        assert executed == [{"value": "hi"}]
+
+    await http.aclose()
+
+
+async def test_tui_confirmation_tab_then_enter_denies() -> None:
+    http, app, executed = tool_call_app()
+
+    async with app.run_test() as pilot:
+        send_task = asyncio.create_task(app.send("привет"))
+        await asyncio.sleep(0.2)
+
+        await pilot.press("tab")
+        await pilot.press("enter")
+        await send_task
+
+        assert executed == []
+
+    await http.aclose()
 
 
 async def test_tui_theme_command() -> None:

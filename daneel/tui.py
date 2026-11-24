@@ -2,17 +2,92 @@
 
 from __future__ import annotations
 
+import json
 from typing import cast
 
 from rich.markup import escape
 from textual import on
 from textual.app import App, ComposeResult
-from textual.containers import Vertical, VerticalScroll
-from textual.widgets import Header, Input, Static
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.screen import ModalScreen
+from textual.widgets import Button, Header, Input, Static
 
 from .core import Conversation, OllamaError
 from .i18n import ReplyLanguage, UILanguage, build_system_prompt, t
 from .theme import available_themes, register_themes
+from .tools import Arguments
+
+
+class ToolConfirmationScreen(ModalScreen[bool]):
+    """Modal dialog asking whether a tool call may run."""
+
+    CSS = """
+    ToolConfirmationScreen {
+        align: center middle;
+    }
+    #confirm-dialog {
+        width: 70%;
+        max-width: 80;
+        height: auto;
+        padding: 1 2;
+        border: round $warning;
+        background: $surface;
+    }
+    #confirm-actions {
+        height: auto;
+        align: center middle;
+    }
+    Button {
+        margin: 1;
+    }
+    """
+
+    def __init__(self, question: str, language: UILanguage) -> None:
+        super().__init__()
+        self.question = question
+        self.language = language
+
+    def compose(self) -> ComposeResult:
+        """Build the question and the two decision buttons."""
+        with Vertical(id="confirm-dialog"):
+            yield Static(
+                f"[bold]{t(self.language, 'confirm_title')}[/]",
+                id="confirm-title",
+            )
+            yield Static(self.question, id="confirm-question")
+            with Horizontal(id="confirm-actions"):
+                yield Button(
+                    t(self.language, "confirm_allow"),
+                    id="allow",
+                    variant="success",
+                )
+                yield Button(
+                    t(self.language, "confirm_deny"),
+                    id="deny",
+                    variant="error",
+                )
+
+    def on_mount(self) -> None:
+        """Localize bindings and focus Allow so that Enter approves."""
+        deny = t(self.language, "confirm_deny")
+        self._bindings.bind("escape", "deny", deny)
+        self._bindings.bind("n", "deny", deny)
+        self.refresh_bindings()
+        self.query_one("#allow", Button).focus()
+
+    @on(Button.Pressed, "#allow")
+    def allow(self) -> None:
+        """Approve the tool call."""
+        self.dismiss(True)
+
+    @on(Button.Pressed, "#deny")
+    def deny(self) -> None:
+        """Reject the tool call."""
+        self.dismiss(False)
+
+    def action_deny(self) -> None:
+        """Reject from the keyboard."""
+        self.deny()
 
 
 class DaneelApp(App[None]):
@@ -90,7 +165,26 @@ class DaneelApp(App[None]):
         register_themes(self)
         self.theme = self.theme_name
         self._apply_language()
+        if self.conversation.confirm is None:
+            self.conversation.set_confirmation(self.confirm_tool_call)
         self.query_one("#prompt", Input).focus()
+
+    async def confirm_tool_call(self, name: str, arguments: Arguments) -> bool:
+        """Ask the user in a modal whether the tool call may run."""
+        rendered = json.dumps(arguments, ensure_ascii=False)
+        question = t(
+            self.lang, "confirm_tool_question", name=name, arguments=rendered
+        )
+
+        async def ask() -> bool:
+            return await self.push_screen_wait(
+                ToolConfirmationScreen(question, self.lang)
+            )
+
+        allowed = await self.run_worker(ask()).wait()
+        if not allowed:
+            await self._note(t(self.lang, "tool_denied", name=name))
+        return allowed
 
     def _apply_language(self) -> None:
         """Update language-dependent widgets and key bindings."""

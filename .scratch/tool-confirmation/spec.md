@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Подтверждение вызовов инструментов в CLI и TUI
 
