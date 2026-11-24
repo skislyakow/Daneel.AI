@@ -97,12 +97,23 @@ In the TUI, run `/theme <name>` to switch instantly or `/theme` to list availabl
 
 The terminal font is controlled by your terminal emulator, not by the application. A monospace font with good Cyrillic coverage (for example Cascadia Code or JetBrains Mono) is recommended.
 
+## 🧰 Tool confirmation
+
+No tools are enabled by default. When the model requests a tool call, the active interface asks before running it:
+
+* **CLI:** `Allow tool <name> with <arguments>? [Y/n]` — Enter (or `y`/`yes`/`да`) approves; `n`/`no`/`нет` denies. A denial is printed as a system message and the tool is not executed.
+* **TUI:** a modal dialog shows the tool name and arguments. Enter confirms the focused button (Allow by default), Tab switches to Deny, and Esc or `n` denies. Denials appear as a note in the chat log.
+
+A confirmation callback supplied by a caller always takes precedence over the interface default. The full design and its tickets live in `.scratch/tool-confirmation/`.
+
 ## 🧩 Code layout
 
 * `daneel/core.py` — core logic: streaming `/api/chat`, conversation history, the tool-call loop, and error handling.
 * `daneel/config.py` — environment-based settings with CLI overrides.
 * `daneel/i18n.py` — interface strings, language resolution, and system prompt assembly.
 * `daneel/theme.py` — custom Daneel themes, theme resolution, and registration.
+* `daneel/cli.py` — plain-text confirmation prompt with injected input/output.
+* `daneel/confirmation.py` — shared confirmation wiring and argument rendering used by both interfaces.
 * `daneel/tools/` — tool contracts and registry; the extension point for agent operations. No tools are enabled by default, and confirmation is mandatory.
 * `daneel/tui.py` — thin Textual layer: chat log, input field, localized messages.
 * `main.py` — entry point; `--cli` selects the plain-text mode.
@@ -163,4 +174,6 @@ Typical feature workflow (skills are invoked via `@skill-id`):
 4. `@to-tickets` — tickets in `.scratch/<feature>/issues/`.
 5. `@implement` — implementation with TDD and a final code review.
 
-These markdown files, along with `AGENTS.md`, `docs/agents/*.md`, `GLOSSARY.md`, and `docs/adr/`, are committed so the context and decisions travel with the code. See `docs/agents/issue-tracker.md` and `docs/agents/domain.md` for the conventions.
+A worked example is `.scratch/tool-confirmation/`: a spec and two resolved tickets for the confirmation feature.
+
+Specs and tickets, along with `AGENTS.md`, `docs/agents/*.md`, and any `GLOSSARY.md` or `docs/adr/` files that get created, are committed so the context and decisions travel with the code. See `docs/agents/issue-tracker.md` and `docs/agents/domain.md` for the conventions.
