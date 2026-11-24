@@ -226,6 +226,142 @@ async def test_tui_confirmation_tab_then_enter_denies() -> None:
     await http.aclose()
 
 
+async def test_copy_command_copies_visible_transcript() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"привет")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+        await pilot.press(*"/lang en")
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.press(*"/copy")
+        await pilot.press("enter")
+
+        assert "You: привет" in app.clipboard
+        assert "Daneel: Привет!" in app.clipboard
+        assert "Interface language: EN" in app.clipboard
+        assert "running offline" not in app.clipboard
+        app.screen.text_select_all()
+        assert "Copied to clipboard." in app.screen.get_selected_text()
+
+    await http.aclose()
+
+
+async def test_copy_last_copies_only_the_answer() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"привет")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+        await pilot.press(*"/copy last")
+        await pilot.press("enter")
+
+        assert app.clipboard == "Daneel: Привет!"
+
+    await http.aclose()
+
+
+async def test_copy_last_uses_the_most_recent_answer() -> None:
+    answers = ["First", "Second"]
+    calls = [0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        content = answers[min(calls[0], len(answers) - 1)]
+        calls[0] += 1
+        body = json.dumps(
+            {"message": {"role": "assistant", "content": content}, "done": True}
+        )
+        return httpx.Response(200, text=body + "\n")
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        for message in ("one", "two"):
+            await pilot.press(*message)
+            await pilot.press("enter")
+            await pilot.pause(0.2)
+        await pilot.press(*"/copy last")
+        await pilot.press("enter")
+
+        assert app.clipboard == "Daneel: Second"
+
+    await http.aclose()
+
+
+@pytest.mark.parametrize("language", ["en", "ru"])
+async def test_help_lists_copy_command(language: str) -> None:
+    http = mock_http()
+    app = DaneelApp(
+        Conversation(OllamaClient(client=http)), ui_language=language
+    )
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/help")
+        await pilot.press("enter")
+        app.screen.text_select_all()
+
+        assert "/copy" in app.screen.get_selected_text()
+
+    await http.aclose()
+
+
+async def test_copy_command_with_empty_chat_reports_note() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/copy")
+        await pilot.press("enter")
+
+        assert app.clipboard == ""
+        app.screen.text_select_all()
+        assert "Nothing to copy." in app.screen.get_selected_text()
+
+    await http.aclose()
+
+
+async def test_copy_command_reports_note_in_russian() -> None:
+    http = mock_http()
+    app = DaneelApp(
+        Conversation(OllamaClient(client=http)), ui_language="ru"
+    )
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/copy")
+        await pilot.press("enter")
+        app.screen.text_select_all()
+
+        assert "Нечего копировать." in app.screen.get_selected_text()
+
+    await http.aclose()
+
+
+async def test_clear_resets_the_copy_transcript() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"привет")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+        await pilot.press("ctrl+l")
+        await pilot.pause()
+        await pilot.press(*"/copy")
+        await pilot.press("enter")
+
+        assert app.clipboard == ""
+        app.screen.text_select_all()
+        assert "Nothing to copy." in app.screen.get_selected_text()
+
+    await http.aclose()
+
+
 async def test_right_click_copies_selected_text(monkeypatch: pytest.MonkeyPatch) -> None:
     http = mock_http()
     app = DaneelApp(Conversation(OllamaClient(client=http)))

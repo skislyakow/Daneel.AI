@@ -106,6 +106,12 @@ No tools are enabled by default. When the model requests a tool call, the active
 
 A confirmation callback supplied by a caller always takes precedence over the interface default. The full design and its tickets live in `.scratch/tool-confirmation/`.
 
+## 📋 Copying chat
+
+Right-click text selected in the chat log to copy just that fragment. `/copy` copies the whole visible transcript (messages, errors, and system notes), while `/copy last` copies only the latest agent answer. Feedback is localized; if nothing is selected or the chat is empty, a note is shown instead. `/help` lists both commands.
+
+Copying uses the terminal clipboard protocol (OSC52), which works in most terminals but not in all of them.
+
 ## 🧩 Code layout
 
 * `daneel/core.py` — core logic: streaming `/api/chat`, conversation history, the tool-call loop, and error handling.

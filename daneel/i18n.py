@@ -62,8 +62,11 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
         "usage_lang": "Usage: /lang en|ru",
         "usage_reply": "Usage: /reply auto|en|ru",
         "usage_theme": "Usage: /theme <name> (or /theme to list)",
+        "usage_copy": "Usage: /copy [last]",
+        "nothing_to_copy": "Nothing to copy.",
         "help_text": (
-            "Commands: /lang en|ru, /reply auto|en|ru, /theme <name>, /clear, /help"
+            "Commands: /lang en|ru, /reply auto|en|ru, /theme <name>, "
+            "/clear, /copy [last], /help"
         ),
         "lang_changed": "Interface language: {language}",
         "reply_changed": "Agent replies: {language}",
@@ -119,8 +122,11 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
         "usage_lang": "Использование: /lang en|ru",
         "usage_reply": "Использование: /reply auto|en|ru",
         "usage_theme": "Использование: /theme <имя> (или /theme для списка)",
+        "usage_copy": "Использование: /copy [last]",
+        "nothing_to_copy": "Нечего копировать.",
         "help_text": (
-            "Команды: /lang en|ru, /reply auto|en|ru, /theme <имя>, /clear, /help"
+            "Команды: /lang en|ru, /reply auto|en|ru, /theme <имя>, "
+            "/clear, /copy [last], /help"
         ),
         "lang_changed": "Язык интерфейса: {language}",
         "reply_changed": "Язык ответов агента: {language}",

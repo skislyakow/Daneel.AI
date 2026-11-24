@@ -164,6 +164,8 @@ class DaneelApp(App[None]):
         self._busy = False
         self._welcome: Static | None = None
         self._hints: Static | None = None
+        self._transcript: list[str] = []
+        self._last_answer: str | None = None
 
     def compose(self) -> ComposeResult:
         """Build the initial widget tree."""
@@ -238,6 +240,7 @@ class DaneelApp(App[None]):
 
     async def _note(self, text: str) -> None:
         """Show a local system message in the chat log."""
+        self._transcript.append(f"{t(self.lang, 'note')}: {text}")
         log = self.query_one("#log", VerticalScroll)
         await log.mount(
             Static(
@@ -296,6 +299,20 @@ class DaneelApp(App[None]):
                 await self._note(t(self.lang, "theme_changed", theme=argument))
             else:
                 await self._note(t(self.lang, "theme_unknown", theme=argument))
+        elif name == "copy":
+            if argument not in ("", "last"):
+                await self._note(t(self.lang, "usage_copy"))
+            elif not self._transcript:
+                await self._note(t(self.lang, "nothing_to_copy"))
+            elif argument == "last":
+                if self._last_answer is None:
+                    await self._note(t(self.lang, "nothing_to_copy"))
+                else:
+                    self.copy_to_clipboard(self._last_answer)
+                    await self._note(t(self.lang, "copied"))
+            else:
+                self.copy_to_clipboard("\n".join(self._transcript))
+                await self._note(t(self.lang, "copied"))
         elif name == "clear":
             await self.action_clear()
         elif name == "help":
@@ -317,6 +334,7 @@ class DaneelApp(App[None]):
                 classes="message user",
             )
         )
+        self._transcript.append(f"{t(self.lang, 'you')}: {text}")
         answer = Static(
             f"[bold green]{t(self.lang, 'daneel')}:[/] ", classes="message assistant"
         )
@@ -332,10 +350,15 @@ class DaneelApp(App[None]):
                 log.scroll_end(animate=False)
         except OllamaError as exc:
             message = t(self.lang, exc.message_key, detail=exc.detail)
+            self._transcript.append(f"{t(self.lang, 'error_prefix')}: {message}")
             answer.update(
                 f"[bold red]{t(self.lang, 'error_prefix')}:[/] {escape(message)}"
             )
             answer.set_class(True, "error")
+        else:
+            answer_line = f"{t(self.lang, 'daneel')}: {received}"
+            self._transcript.append(answer_line)
+            self._last_answer = answer_line
         finally:
             self._busy = False
             prompt.disabled = False
@@ -355,6 +378,8 @@ class DaneelApp(App[None]):
         if self._busy:
             return
         self.conversation.clear()
+        self._transcript.clear()
+        self._last_answer = None
         log = self.query_one("#log", VerticalScroll)
         for child in list(log.children):
             child.remove()
