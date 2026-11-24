@@ -1,10 +1,15 @@
+import sys
+from io import TextIOWrapper
+from typing import cast
+
 import requests
 
-# Настройки подключения к Ollama
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "qwen2.5:1.5b"  # Измените на вашу модель в Ollama
+cast(TextIOWrapper, sys.stdout).reconfigure(encoding="utf-8")
+cast(TextIOWrapper, sys.stderr).reconfigure(encoding="utf-8")
 
-# Системные инструкции для Даниела (System Prompt)
+OLLAMA_URL = "http://localhost:11434/api/generate"
+MODEL_NAME = "qwen2.5:1.5b"
+
 SYSTEM_PROMPT = (
     "Ты — Р. Даниел Оливо (Daneel.AI), локальный ИИ-агент, названный в честь робота-детектива Исаака Азимова. "
     "Твоя цель — помогать пользователю решать домашние и рабочие задачи. "
@@ -13,13 +18,12 @@ SYSTEM_PROMPT = (
 
 
 def ask_daneel(user_input):
-    """Функция отправки запроса в локальную Ollama"""
     full_prompt = f"{SYSTEM_PROMPT}\n\nПользователь: {user_input}\nДаниел:"
 
     payload = {
         "model": MODEL_NAME,
         "prompt": full_prompt,
-        "stream": False,  # Выключаем потоковую передачу для простоты кода MVP
+        "stream": False,
     }
 
     try:

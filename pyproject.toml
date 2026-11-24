@@ -1,0 +1,19 @@
+[project]
+name = "daneel-ai"
+version = "0.1.0"
+description = "Daneel.AI — локальный автономный ИИ-агент"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.34.2",
+]
+
+[project.scripts]
+daneel = "main:main"
+
+[build-system]
+requires = ["hatchling>=1.33"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+include = ["main.py"]
