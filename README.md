@@ -44,3 +44,27 @@ uv sync                 # пересобрать окружение под lock-
 
 ## 💻 Разработка в VS Code
 Настройки рабочей области (`.vscode/settings.json`) указывают Python/Pylance использовать интерпретатор из `.venv`. Если Pylance по-прежнему не видит `requests`, выполните **Python: Select Interpreter** → `.venv` и перезагрузите окно.
+
+## 🤖 Навыки агентов (OpenCode)
+
+Набор [навыков](https://github.com/mattpocock/skills) для планирования и разработки ставится **локально** и в репозиторий не коммитится (`.agents/skills/` и `skills-lock.json` в `.gitignore`). При настройке нового окружения выполните:
+
+```bash
+npx --yes skills@latest add mattpocock/skills -a opencode \
+  --skill setup-matt-pocock-skills --skill grill-with-docs --skill grilling \
+  --skill domain-modeling --skill to-spec --skill to-tickets \
+  --skill implement --skill tdd --skill codebase-design \
+  --skill code-review --skill diagnosing-bugs -y
+```
+
+Для обновления повторите команду `add` целиком — она перезапишет локальные копии. `npx skills@latest update` обновит только те навыки, которые попали в локальный `skills-lock.json` (он не коммитится), поэтому полный `add` надёжнее.
+
+Типовой цикл работы над фичей (навыки вызываются через `@skill-id`):
+
+1. `@setup-matt-pocock-skills` — один раз на репозиторий, создаёт конфигурацию агентов (для этого репозитория уже выполнено).
+2. `@grill-with-docs` — детальное интервью по задаче, глоссарий и ADR.
+3. `@to-spec` — спека в `.scratch/<feature>/spec.md`.
+4. `@to-tickets` — тикеты в `.scratch/<feature>/issues/`.
+5. `@implement` — реализация через TDD с финальным код-ревью.
+
+Эти md-файлы, а также `AGENTS.md`, `docs/agents/*.md`, `GLOSSARY.md` и `docs/adr/` коммитятся в репозиторий — так контекст и решения синхронизируются между всеми разработчиками. Подробности конвенций — в `docs/agents/issue-tracker.md` и `docs/agents/domain.md`.
