@@ -128,7 +128,16 @@ Commit `uv.lock` — it guarantees a reproducible environment.
 
 ## 💻 VS Code
 
-`.vscode/settings.json` points Python/Pylance at the `.venv` interpreter. If Pylance still cannot find installed packages (`httpx`, `textual`), run **Python: Select Interpreter** → `.venv` and reload the window.
+Editor settings are local and ignored by git (`.vscode/`): paths to the interpreter differ between machines. Create `.vscode/settings.json` yourself, pointing Python/Pylance at the `.venv` interpreter:
+
+```json
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.terminal.activateEnvironment": true
+}
+```
+
+On Windows use `${workspaceFolder}/.venv/Scripts/python.exe` instead. If Pylance still cannot find installed packages (`httpx`, `textual`), run **Python: Select Interpreter** → `.venv` and reload the window.
 
 ## 🤖 Agent skills (OpenCode)
 
