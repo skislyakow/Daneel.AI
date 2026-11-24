@@ -5,6 +5,7 @@ import pytest
 
 from daneel.core import Conversation, OllamaClient, OllamaConnectionError
 from daneel.i18n import DEFAULT_REPLY_LANGUAGE, build_system_prompt
+from daneel.tools import FunctionTool, ToolRegistry
 
 
 def streaming_response(chunks: list[dict]) -> httpx.Response:
@@ -55,4 +56,76 @@ async def test_connection_error_rolls_back_history() -> None:
         [chunk async for chunk in conversation.stream_answer("Привет")]
 
     assert conversation.messages == []
+    await http.aclose()
+
+
+async def test_tool_call_loop_executes_confirmed_tool() -> None:
+    executed: list[dict] = []
+
+    async def runner(arguments: dict) -> str:
+        executed.append(arguments)
+        return f"got {arguments['value']}"
+
+    tool = FunctionTool(
+        name="echo",
+        description="Echo a value",
+        parameters={
+            "type": "object",
+            "properties": {"value": {"type": "string"}},
+            "required": ["value"],
+        },
+        runner=runner,
+    )
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        seen.append(payload)
+        if len(seen) == 1:
+            return streaming_response(
+                [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "function": {
+                                        "name": "echo",
+                                        "arguments": {"value": "hi"},
+                                    }
+                                }
+                            ],
+                        },
+                        "done": False,
+                    },
+                    {"message": {"role": "assistant", "content": ""}, "done": True},
+                ]
+            )
+        return streaming_response(
+            [
+                {
+                    "message": {"role": "assistant", "content": "Готово"},
+                    "done": True,
+                }
+            ]
+        )
+
+    async def confirm(name: str, arguments: dict) -> bool:
+        assert name == "echo"
+        return True
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    conversation = Conversation(
+        OllamaClient(client=http),
+        tools=ToolRegistry([tool]),
+        confirm=confirm,
+    )
+
+    parts = [chunk async for chunk in conversation.stream_answer("Скажи привет")]
+
+    assert "".join(parts) == "Готово"
+    assert executed == [{"value": "hi"}]
+    assert seen[0]["tools"][0]["function"]["name"] == "echo"
+    assert any(m.role == "tool" and m.content == "got hi" for m in conversation.messages)
     await http.aclose()

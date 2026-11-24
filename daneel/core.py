@@ -5,16 +5,19 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import httpx
 
+from .config import Settings
 from .i18n import DEFAULT_REPLY_LANGUAGE, build_system_prompt
+from .tools import Confirm, ToolError, ToolRegistry
 
 DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "qwen2.5:1.5b"
+MAX_TOOL_ROUNDS = 5
 
-Role = Literal["system", "user", "assistant"]
+Role = Literal["system", "user", "assistant", "tool"]
 
 
 @dataclass(slots=True)
@@ -23,10 +26,39 @@ class Message:
 
     role: Role
     content: str
+    tool_calls: list[dict[str, Any]] | None = None
 
-    def as_dict(self) -> dict[str, str]:
+    def as_dict(self) -> dict[str, Any]:
         """Return the message in the Ollama API format."""
-        return {"role": self.role, "content": self.content}
+        data: dict[str, Any] = {"role": self.role, "content": self.content}
+        if self.tool_calls:
+            data["tool_calls"] = self.tool_calls
+        return data
+
+
+@dataclass(slots=True)
+class TextChunk:
+    """A piece of the assistant's text response."""
+
+    text: str
+
+
+@dataclass(slots=True)
+class ToolCalls:
+    """Tool calls requested by the assistant."""
+
+    calls: list[dict[str, Any]]
+
+
+@dataclass(slots=True)
+class ToolResultEvent:
+    """Result of an executed tool call."""
+
+    name: str
+    result: str
+
+
+StreamEvent = TextChunk | ToolCalls | ToolResultEvent
 
 
 class OllamaError(RuntimeError):
@@ -56,16 +88,38 @@ class OllamaClient:
         *,
         client: httpx.AsyncClient | None = None,
         timeout: float = 120.0,
+        tools: Sequence[dict[str, Any]] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.system_prompt = system_prompt
+        self.tools = list(tools or [])
         self._client = client
         self._timeout = timeout
 
-    async def chat_stream(self, history: Sequence[Message]) -> AsyncIterator[str]:
-        """Send the history to /api/chat and yield response chunks as they arrive."""
-        payload = {
+    @classmethod
+    def from_settings(
+        cls,
+        settings: Settings,
+        *,
+        system_prompt: str | None = None,
+        client: httpx.AsyncClient | None = None,
+        timeout: float = 120.0,
+        tools: Sequence[dict[str, Any]] | None = None,
+    ) -> OllamaClient:
+        """Build a client from runtime settings."""
+        return cls(
+            base_url=settings.base_url,
+            model=settings.model,
+            system_prompt=system_prompt or build_system_prompt(settings.reply_language),
+            client=client,
+            timeout=timeout,
+            tools=tools,
+        )
+
+    async def chat_stream(self, history: Sequence[Message]) -> AsyncIterator[StreamEvent]:
+        """Send the history to /api/chat and yield text chunks and tool calls."""
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": [
                 Message("system", self.system_prompt).as_dict(),
@@ -73,11 +127,14 @@ class OllamaClient:
             ],
             "stream": True,
         }
+        if self.tools:
+            payload["tools"] = self.tools
 
         owns_client = self._client is None
         client = self._client or httpx.AsyncClient(
             timeout=httpx.Timeout(self._timeout, connect=5.0)
         )
+        pending_calls: dict[str, dict[str, Any]] = {}
         try:
             async with client.stream(
                 "POST", f"{self.base_url}/api/chat", json=payload
@@ -96,9 +153,37 @@ class OllamaClient:
                     if isinstance(chunk, dict) and chunk.get("error"):
                         raise OllamaError(str(chunk["error"]))
                     message = chunk.get("message") if isinstance(chunk, dict) else None
-                    content = message.get("content", "") if isinstance(message, dict) else ""
+                    if not isinstance(message, dict):
+                        continue
+
+                    content = message.get("content", "")
                     if content:
-                        yield content
+                        yield TextChunk(str(content))
+
+                    for call in message.get("tool_calls") or []:
+                        if not isinstance(call, dict):
+                            continue
+                        function = call.get("function")
+                        if not isinstance(function, dict):
+                            continue
+                        name = function.get("name")
+                        if not name:
+                            continue
+                        arguments = function.get("arguments") or {}
+                        if isinstance(arguments, str):
+                            try:
+                                arguments = json.loads(arguments)
+                            except json.JSONDecodeError:
+                                arguments = {}
+                        if not isinstance(arguments, dict):
+                            arguments = {}
+                        entry = pending_calls.setdefault(
+                            str(name), {"name": str(name), "arguments": {}}
+                        )
+                        entry["arguments"].update(arguments)
+
+            if pending_calls:
+                yield ToolCalls(list(pending_calls.values()))
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise OllamaConnectionError(str(exc)) from exc
         finally:
@@ -107,25 +192,73 @@ class OllamaClient:
 
 
 class Conversation:
-    """A conversation with the agent, including its message history."""
+    """A conversation with the agent, including history and optional tools."""
 
-    def __init__(self, client: OllamaClient | None = None) -> None:
+    def __init__(
+        self,
+        client: OllamaClient | None = None,
+        *,
+        tools: ToolRegistry | None = None,
+        confirm: Confirm | None = None,
+    ) -> None:
         self.client = client or OllamaClient()
+        self.tools = tools or ToolRegistry()
+        self.confirm = confirm
         self.messages: list[Message] = []
+        if tools is not None:
+            self.client.tools = self.tools.as_schema()
 
     def clear(self) -> None:
         """Remove all messages from the history."""
         self.messages.clear()
 
+    def set_confirmation(self, confirm: Confirm | None) -> None:
+        """Set or replace the tool-call confirmation callback."""
+        self.confirm = confirm
+
     async def stream_answer(self, user_text: str) -> AsyncIterator[str]:
-        """Record the user's message and yield the agent's response chunk by chunk."""
+        """Yield only the assistant's text, handling tool calls internally."""
+        async for event in self.stream_events(user_text):
+            if isinstance(event, TextChunk):
+                yield event.text
+
+    async def stream_events(self, user_text: str) -> AsyncIterator[StreamEvent]:
+        """Run the chat loop, including tool calls and confirmations."""
+        start_len = len(self.messages)
         self.messages.append(Message("user", user_text))
-        parts: list[str] = []
+        all_text: list[str] = []
         try:
-            async for chunk in self.client.chat_stream(self.messages):
-                parts.append(chunk)
-                yield chunk
+            for _ in range(MAX_TOOL_ROUNDS):
+                round_text: list[str] = []
+                tool_calls: list[dict[str, Any]] = []
+                async for event in self.client.chat_stream(self.messages):
+                    if isinstance(event, TextChunk):
+                        round_text.append(event.text)
+                        yield event
+                    elif isinstance(event, ToolCalls):
+                        tool_calls.extend(event.calls)
+                        yield event
+
+                all_text.extend(round_text)
+                if not tool_calls:
+                    break
+
+                self.messages.append(
+                    Message("assistant", "".join(round_text), tool_calls=tool_calls)
+                )
+                for call in tool_calls:
+                    name = str(call.get("name", ""))
+                    arguments = call.get("arguments") or {}
+                    if not isinstance(arguments, dict):
+                        arguments = {}
+                    try:
+                        result = await self.tools.call(name, arguments, self.confirm)
+                    except ToolError as exc:
+                        result = f"Error: {exc}"
+                    self.messages.append(Message("tool", result))
+                    yield ToolResultEvent(name, result)
         except OllamaError:
-            self.messages.pop()
+            del self.messages[start_len:]
             raise
-        self.messages.append(Message("assistant", "".join(parts)))
+
+        self.messages.append(Message("assistant", "".join(all_text)))

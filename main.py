@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import sys
 from io import TextIOWrapper
 from typing import cast
 
+from daneel.config import Settings
 from daneel.core import Conversation, OllamaClient, OllamaError
 from daneel.i18n import (
     UILanguage,
-    build_system_prompt,
     resolve_reply_language,
     resolve_ui_language,
     t,
@@ -61,29 +60,33 @@ def main() -> None:
         "--lang",
         choices=("en", "ru"),
         default=None,
-        help="interface language (default: en, or DANEEL_LANG)",
+        help="interface language (overrides DANEEL_LANG)",
     )
     parser.add_argument(
         "--reply",
         choices=("auto", "en", "ru"),
         default=None,
-        help="agent reply language: auto follows the user (default: auto)",
+        help="agent reply language; auto follows the user (overrides DANEEL_REPLY)",
     )
     args = parser.parse_args()
 
-    language = resolve_ui_language(args.lang, os.environ.get("DANEEL_LANG"))
-    reply_language = resolve_reply_language(args.reply)
-    conversation = Conversation(
-        OllamaClient(system_prompt=build_system_prompt(reply_language))
-    )
+    settings = Settings.from_env()
+    if args.lang:
+        settings = settings.with_overrides(ui_language=resolve_ui_language(args.lang))
+    if args.reply:
+        settings = settings.with_overrides(
+            reply_language=resolve_reply_language(args.reply)
+        )
+
+    conversation = Conversation(OllamaClient.from_settings(settings))
 
     if args.cli:
-        asyncio.run(run_cli(language, conversation))
+        asyncio.run(run_cli(settings.ui_language, conversation))
     else:
         DaneelApp(
             conversation,
-            ui_language=language,
-            reply_language=reply_language,
+            ui_language=settings.ui_language,
+            reply_language=settings.reply_language,
         ).run()
 
 

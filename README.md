@@ -37,14 +37,46 @@ Build a minimal working protocol between the user, the agent, and a local LLM, w
 
 In the TUI: **Enter** sends a message (multiline text can be pasted), **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/clear`, `/help`.
 
+## 🌍 Run from anywhere
+
+Install the project as a global uv tool from the repository directory:
+
+```bash
+uv tool install --editable .
+uv tool update-shell        # only if uv's bin directory is not on PATH
+```
+
+Then `daneel` is available from any directory:
+
+```bash
+daneel
+daneel --cli --lang ru --reply ru
+```
+
+`--editable` means source changes are picked up without reinstalling. After changing dependencies, re-run the install command. Remove the tool with `uv tool uninstall daneel`.
+
+## ⚙️ Configuration
+
+Settings are read from environment variables; CLI flags take precedence.
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `OLLAMA_BASE_URL` | Ollama API address | `http://localhost:11434` |
+| `DANEEL_MODEL` | Model name | `qwen2.5:1.5b` |
+| `DANEEL_WORKSPACE` | Root directory for future agent operations | current directory |
+| `DANEEL_LANG` | Interface language (`en`/`ru`) | `en` |
+| `DANEEL_REPLY` | Reply mode (`auto`/`en`/`ru`) | `auto` |
+
+`DANEEL_WORKSPACE` is the safety boundary for tools that will read or change files. Since the agent can be started from anywhere, do not rely on the current directory for operations.
+
 ## 🌐 Languages
 
 The interface is English by default; the agent's reply language is configured independently.
 
 ```bash
-uv run daneel --lang ru            # Russian interface
-uv run daneel --reply ru           # agent always replies in Russian
-DANEEL_LANG=ru uv run daneel       # language via environment variable
+uv run daneel --lang ru                       # Russian interface
+uv run daneel --reply ru                      # agent always replies in Russian
+DANEEL_LANG=ru DANEEL_REPLY=ru daneel --cli  # language via environment
 ```
 
 * `--lang {en,ru}` sets the interface language. In the TUI, use `/lang en|ru` or **Ctrl+T** to switch without restarting.
@@ -53,11 +85,13 @@ DANEEL_LANG=ru uv run daneel       # language via environment variable
 
 ## 🧩 Code layout
 
-* `daneel/core.py` — core logic: streaming `/api/chat`, conversation history, error handling.
+* `daneel/core.py` — core logic: streaming `/api/chat`, conversation history, the tool-call loop, and error handling.
+* `daneel/config.py` — environment-based settings with CLI overrides.
 * `daneel/i18n.py` — interface strings, language resolution, and system prompt assembly.
+* `daneel/tools/` — tool contracts and registry; the extension point for agent operations. No tools are enabled by default, and confirmation is mandatory.
 * `daneel/tui.py` — thin Textual layer: chat log, input field, localized messages.
 * `main.py` — entry point; `--cli` selects the plain-text mode.
-* `tests/` — core, i18n, and TUI tests with a mock HTTP transport.
+* `tests/` — core, config, i18n, tools, and TUI tests with a mock HTTP transport.
 
 The agent logic is separated from the interface, so another UI or additional workers can be added without rewriting the core. Run the tests with:
 
