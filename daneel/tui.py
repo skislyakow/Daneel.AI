@@ -126,10 +126,10 @@ class DaneelApp(App[None]):
         margin: 0 2;
     }
     #hints {
-        height: 2;
+        height: 3;
         margin: 1 2 1 2;
         padding: 0 1;
-        border-bottom: solid $primary;
+        border: round $primary;
         content-align: left middle;
         color: $footer-description-foreground;
         background: $footer-background;
