@@ -124,7 +124,7 @@ class DaneelApp(App[None]):
     }
     #prompt {
         margin: 0 2;
-        padding: 0 1;
+        padding: 1 1;
         background: $footer-background;
         border: none;
         border-left: heavy $primary;
