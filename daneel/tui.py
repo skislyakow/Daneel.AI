@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import cast
 
 from rich.markup import escape
@@ -12,6 +11,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Header, Input, Static
 
+from .confirmation import install_confirmation, render_arguments
 from .core import Conversation, OllamaError
 from .i18n import ReplyLanguage, UILanguage, build_system_prompt, t
 from .theme import available_themes, register_themes
@@ -165,13 +165,12 @@ class DaneelApp(App[None]):
         register_themes(self)
         self.theme = self.theme_name
         self._apply_language()
-        if self.conversation.confirm is None:
-            self.conversation.set_confirmation(self.confirm_tool_call)
+        install_confirmation(self.conversation, self.confirm_tool_call)
         self.query_one("#prompt", Input).focus()
 
     async def confirm_tool_call(self, name: str, arguments: Arguments) -> bool:
         """Ask the user in a modal whether the tool call may run."""
-        rendered = json.dumps(arguments, ensure_ascii=False)
+        rendered = render_arguments(arguments)
         question = t(
             self.lang, "confirm_tool_question", name=name, arguments=rendered
         )

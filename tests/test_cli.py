@@ -1,6 +1,7 @@
 import pytest
 
-from daneel.cli import cli_confirmation, install_cli_confirmation
+from daneel.cli import cli_confirmation
+from daneel.confirmation import install_confirmation
 from daneel.core import Conversation
 
 
@@ -36,14 +37,14 @@ async def test_cli_confirmation_reports_denial_in_interface_language() -> None:
     assert any("отклонён" in line for line in output)
 
 
-async def test_install_cli_confirmation_keeps_injected_callback() -> None:
+async def test_install_confirmation_keeps_injected_callback() -> None:
     async def custom(name: str, arguments: dict) -> bool:
         return True
 
     conversation = Conversation(confirm=custom)
-    install_cli_confirmation(conversation, "en")
+    install_confirmation(conversation, cli_confirmation("en"))
     assert conversation.confirm is custom
 
     conversation = Conversation()
-    install_cli_confirmation(conversation, "en")
+    install_confirmation(conversation, cli_confirmation("en"))
     assert conversation.confirm is not None

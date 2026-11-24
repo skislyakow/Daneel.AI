@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import Callable
 
-from .core import Conversation
+from .confirmation import render_arguments
 from .i18n import UILanguage, t
 from .tools import Arguments, Confirm
 
@@ -27,7 +26,7 @@ def cli_confirmation(
     """Build a confirmation callback that asks in the plain-text interface."""
 
     async def confirm(name: str, arguments: Arguments) -> bool:
-        rendered = json.dumps(arguments, ensure_ascii=False)
+        rendered = render_arguments(arguments)
         prompt = t(
             language, "cli_confirm_prompt", name=name, arguments=rendered
         )
@@ -38,11 +37,3 @@ def cli_confirmation(
         return False
 
     return confirm
-
-
-def install_cli_confirmation(
-    conversation: Conversation, language: UILanguage
-) -> None:
-    """Give the conversation a CLI callback unless one was supplied already."""
-    if conversation.confirm is None:
-        conversation.set_confirmation(cli_confirmation(language))
