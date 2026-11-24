@@ -1,57 +1,53 @@
+import argparse
+import asyncio
 import sys
 from io import TextIOWrapper
 from typing import cast
 
-import requests
+from daneel.core import Conversation, OllamaClient, OllamaError
+from daneel.tui import DaneelApp
 
+# На Windows консоль может использовать cp1251, который не поддерживает эмодзи
 cast(TextIOWrapper, sys.stdout).reconfigure(encoding="utf-8")
 cast(TextIOWrapper, sys.stderr).reconfigure(encoding="utf-8")
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "qwen2.5:1.5b"
 
-SYSTEM_PROMPT = (
-    "Ты — Р. Даниел Оливо (Daneel.AI), локальный ИИ-агент, названный в честь робота-детектива Исаака Азимова. "
-    "Твоя цель — помогать пользователю решать домашние и рабочие задачи. "
-    "Отвечай кратко, четко, по делу и на русском языке."
-)
-
-
-def ask_daneel(user_input):
-    full_prompt = f"{SYSTEM_PROMPT}\n\nПользователь: {user_input}\nДаниел:"
-
-    payload = {
-        "model": MODEL_NAME,
-        "prompt": full_prompt,
-        "stream": False,
-    }
-
-    try:
-        response = requests.post(OLLAMA_URL, json=payload)
-        if response.status_code == 200:
-            return response.json().get("response", "Ошибка: пустой ответ.")
-        else:
-            return f"Ошибка Ollama: код {response.status_code}"
-    except requests.exceptions.ConnectionError:
-        return "Ошибка: Не удалось подключиться к Ollama. Проверьте, запущен ли сервис."
-
-
-def main():
+async def run_cli() -> None:
+    """Простой текстовый режим (fallback без полноэкранного интерфейса)."""
+    conversation = Conversation(OllamaClient())
     print("🤖 Daneel.AI запущен и готов к работе offline.")
     print("(Для выхода введите 'выход' или 'exit')\n")
 
     while True:
         user_input = input("Вы: ")
-        if user_input.lower() in ["выход", "exit"]:
+        if user_input.lower() in {"выход", "exit"}:
             print("🤖 До встречи, создатель.")
             break
-
         if not user_input.strip():
             continue
 
-        print("🤖 Даниел думает...")
-        answer = ask_daneel(user_input)
-        print(f"🤖 Даниел: {answer}\n")
+        print("🤖 Даниел: ", end="", flush=True)
+        try:
+            async for chunk in conversation.stream_answer(user_input):
+                print(chunk, end="", flush=True)
+        except OllamaError as exc:
+            print(f"\nОшибка: {exc}", end="")
+        print("\n")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Daneel.AI — локальный ИИ-агент")
+    parser.add_argument(
+        "--cli",
+        action="store_true",
+        help="запустить простой текстовый режим вместо TUI",
+    )
+    args = parser.parse_args()
+
+    if args.cli:
+        asyncio.run(run_cli())
+    else:
+        DaneelApp(Conversation(OllamaClient())).run()
 
 
 if __name__ == "__main__":
