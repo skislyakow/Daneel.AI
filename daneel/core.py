@@ -1,4 +1,4 @@
-"""Ядро Daneel.AI: работа с Ollama и состояние диалога."""
+"""Core of Daneel.AI: Ollama communication and conversation state."""
 
 from __future__ import annotations
 
@@ -9,44 +9,50 @@ from typing import Literal
 
 import httpx
 
+from .i18n import DEFAULT_REPLY_LANGUAGE, build_system_prompt
+
 DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "qwen2.5:1.5b"
-SYSTEM_PROMPT = (
-    "Ты — Р. Даниел Оливо (Daneel.AI), локальный ИИ-агент, названный в честь робота-детектива Исаака Азимова. "
-    "Твоя цель — помогать пользователю решать домашние и рабочие задачи. "
-    "Отвечай кратко, четко, по делу и на русском языке."
-)
 
 Role = Literal["system", "user", "assistant"]
 
 
 @dataclass(slots=True)
 class Message:
-    """Одно сообщение в истории диалога."""
+    """A single message in the conversation history."""
 
     role: Role
     content: str
 
     def as_dict(self) -> dict[str, str]:
+        """Return the message in the Ollama API format."""
         return {"role": self.role, "content": self.content}
 
 
 class OllamaError(RuntimeError):
-    """Ошибка при запросе к Ollama."""
+    """An error returned by Ollama or while calling it."""
+
+    message_key: str = "http_error"
+
+    def __init__(self, detail: str = "") -> None:
+        self.detail = detail
+        super().__init__(detail or self.message_key)
 
 
 class OllamaConnectionError(OllamaError):
-    """Не удалось связаться со сервисом Ollama."""
+    """Ollama could not be reached."""
+
+    message_key = "connection_error"
 
 
 class OllamaClient:
-    """Асинхронный клиент Ollama с потоковым ответом."""
+    """Asynchronous Ollama client with a streaming response."""
 
     def __init__(
         self,
         base_url: str = DEFAULT_BASE_URL,
         model: str = DEFAULT_MODEL,
-        system_prompt: str = SYSTEM_PROMPT,
+        system_prompt: str = build_system_prompt(DEFAULT_REPLY_LANGUAGE),
         *,
         client: httpx.AsyncClient | None = None,
         timeout: float = 120.0,
@@ -58,7 +64,7 @@ class OllamaClient:
         self._timeout = timeout
 
     async def chat_stream(self, history: Sequence[Message]) -> AsyncIterator[str]:
-        """Отправить историю в /api/chat и вернуть поток кусков ответа."""
+        """Send the history to /api/chat and yield response chunks as they arrive."""
         payload = {
             "model": self.model,
             "messages": [
@@ -78,9 +84,7 @@ class OllamaClient:
             ) as response:
                 if response.status_code != 200:
                     body = (await response.aread()).decode("utf-8", errors="replace")
-                    raise OllamaError(
-                        f"Ollama вернул код {response.status_code}: {body[:200]}"
-                    )
+                    raise OllamaError(body[:200])
 
                 async for line in response.aiter_lines():
                     if not line.strip():
@@ -96,26 +100,25 @@ class OllamaClient:
                     if content:
                         yield content
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
-            raise OllamaConnectionError(
-                "Не удалось подключиться к Ollama. Проверьте, запущен ли сервис."
-            ) from exc
+            raise OllamaConnectionError(str(exc)) from exc
         finally:
             if owns_client:
                 await client.aclose()
 
 
 class Conversation:
-    """Диалог с агентом: хранит историю и добавляет ответы в неё."""
+    """A conversation with the agent, including its message history."""
 
     def __init__(self, client: OllamaClient | None = None) -> None:
         self.client = client or OllamaClient()
         self.messages: list[Message] = []
 
     def clear(self) -> None:
+        """Remove all messages from the history."""
         self.messages.clear()
 
     async def stream_answer(self, user_text: str) -> AsyncIterator[str]:
-        """Записать реплику пользователя и вернуть поток ответа Даниела."""
+        """Record the user's message and yield the agent's response chunk by chunk."""
         self.messages.append(Message("user", user_text))
         parts: list[str] = []
         try:

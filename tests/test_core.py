@@ -3,12 +3,8 @@ import json
 import httpx
 import pytest
 
-from daneel.core import (
-    SYSTEM_PROMPT,
-    Conversation,
-    OllamaClient,
-    OllamaConnectionError,
-)
+from daneel.core import Conversation, OllamaClient, OllamaConnectionError
+from daneel.i18n import DEFAULT_REPLY_LANGUAGE, build_system_prompt
 
 
 def streaming_response(chunks: list[dict]) -> httpx.Response:
@@ -40,7 +36,10 @@ async def test_stream_answer_accumulates_and_sends_history() -> None:
         ("assistant", "Привет"),
     ]
     assert seen[0]["stream"] is True
-    assert seen[0]["messages"][0] == {"role": "system", "content": SYSTEM_PROMPT}
+    assert seen[0]["messages"][0] == {
+        "role": "system",
+        "content": build_system_prompt(DEFAULT_REPLY_LANGUAGE),
+    }
     assert seen[0]["messages"][1] == {"role": "user", "content": "Здравствуй"}
     await http.aclose()
 

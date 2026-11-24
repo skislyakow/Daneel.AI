@@ -1,40 +1,40 @@
-# Issue tracker: Local Markdown
+# Трекер задач: локальный Markdown
 
-Issues and specs for this repo live as markdown files in `.scratch/`. These files are committed to the repository, so the whole feature history travels with the code.
+Задачи и спеки этого репозитория хранятся как markdown-файлы в `.scratch/`. Эти файлы коммитятся в репозиторий, поэтому вся история фичи поставляется вместе с кодом.
 
-## Conventions
+## Соглашения
 
-- One feature per directory: `.scratch/<feature-slug>/`
-- The spec is `.scratch/<feature-slug>/spec.md`
-- Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`, never a single combined tickets file
-- Triage state is recorded as a `Status:` line near the top of each issue file (see status values below)
-- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+- Одна фича — один каталог: `.scratch/<feature-slug>/`
+- Спека: `.scratch/<feature-slug>/spec.md`
+- Тикеты реализации — по одному файлу на тикет: `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, нумерация от `01`, не один общий файл
+- Состояние триажа записывается строкой `Status:` рядом с началом файла тикета (см. значения ниже)
+- Комментарии и история обсуждения дописываются в конец файла под заголовком `## Comments`
 
-## Status values
+## Значения `Status`
 
-The `triage` skill is not installed in this repo, so there is no separate triage-labels file. Use these five canonical role strings directly as `Status:` values:
+Навык `triage` в этом репозитории не установлен, поэтому отдельного файла ярлыков нет. Используйте эти пять канонических ролей напрямую как значения `Status:`:
 
-- `needs-triage` — not looked at yet
-- `needs-info` — blocked on an answer from the user
-- `ready-for-agent` — ready to be picked up by an agent
-- `ready-for-human` — needs a human decision or action
-- `wontfix` — deliberately not doing it
+- `needs-triage` — ещё не рассматривалось
+- `needs-info` — заблокировано ответом от пользователя
+- `ready-for-agent` — готово к захвату агентом
+- `ready-for-human` — требуется решение или действие человека
+- `wontfix` — сознательно не делаем
 
-## When a skill says "publish to the issue tracker"
+## Когда навык говорит «опубликовать в трекере»
 
-Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed). For example, `/to-spec` writes `.scratch/<feature-slug>/spec.md` with `Status: ready-for-agent`.
+Создайте новый файл под `.scratch/<feature-slug>/` (создав каталог при необходимости). Например, `/to-spec` пишет `.scratch/<feature-slug>/spec.md` со строкой `Status: ready-for-agent`.
 
-## When a skill says "fetch the relevant ticket"
+## Когда навык говорит «получить нужный тикет»
 
-Read the file at the referenced path. The user will normally pass the path or the issue number directly.
+Прочитайте файл по переданному пути. Обычно пользователь передаёт путь или номер тикета напрямую.
 
-## Wayfinding operations
+## Операции wayfinding
 
-Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
+Используются навыком `/wayfinder`. **Карта** — файл с одним **дочерним** файлом на тикет.
 
-- **Map**: `.scratch/<effort>/map.md` (the Notes / Decisions-so-far / Fog body).
-- **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
-- **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked when every file it lists is `resolved`.
-- **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
-- **Claim**: set `Status: claimed` and save before any work.
-- **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+- **Карта:** `.scratch/<effort>/map.md` (тело Notes / Decisions-so-far / Fog).
+- **Дочерний тикет:** `.scratch/<effort>/issues/NN-<slug>.md`, нумерация от `01`, вопрос в теле файла. Строка `Type:` задаёт тип тикета (`research`/`prototype`/`grilling`/`task`), строка `Status:` — `claimed`/`resolved`.
+- **Блокировка:** строка `Blocked by: NN, NN` рядом с началом файла. Тикет разблокирован, когда все перечисленные тикеты имеют статус `resolved`.
+- **Frontier:** сканируйте `.scratch/<effort>/issues/` на открытые, разблокированные, незанятые тикеты; первым по номеру.
+- **Захват:** установите `Status: claimed` и сохраните файл до начала работы.
+- **Разрешение:** добавьте ответ под заголовком `## Answer`, установите `Status: resolved`, затем добавьте указатель на контекст (кратко + ссылка) в раздел Decisions-so-far карты `map.md`.

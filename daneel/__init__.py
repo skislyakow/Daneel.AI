@@ -1,1 +1,1 @@
-"""Daneel.AI — локальный ИИ-агент."""
+"""Daneel.AI — local AI agent."""

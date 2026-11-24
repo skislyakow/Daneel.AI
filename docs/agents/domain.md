@@ -1,18 +1,18 @@
-# Domain Docs
+# Доменные документы
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+Как навыки разработки должны использовать доменную документацию репозитория при исследовании кода.
 
-## Before exploring, read these
+## Перед исследованием прочитайте
 
-- **`GLOSSARY.md`** at the repo root, or
-- **`GLOSSARY-MAP.md`** at the repo root if it exists: it points at one `GLOSSARY.md` per context. Read each one relevant to the topic.
-- **`docs/adr/`**: read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
+- **`GLOSSARY.md`** в корне репозитория или
+- **`GLOSSARY-MAP.md`** в корне, если он существует: он указывает на по одному `GLOSSARY.md` на каждый контекст. Прочитайте те, которые относятся к теме.
+- **`docs/adr/`**: прочитайте ADR, затрагивающие область, над которой предстоит работать. В мультиконтекстных репозиториях также проверьте `src/<context>/docs/adr/` для решений конкретного контекста.
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
+Если какого-то из файлов нет, **продолжайте молча**. Не сообщайте об отсутствии и не предлагайте создать их заранее. Навык `/domain-modeling` (достигаемый через `/grill-with-docs` и `/improve-codebase-architecture`) создаёт их лениво, когда термины или решения действительно возникают.
 
-## File structure
+## Структура файлов
 
-Single-context repo (most repos):
+Репозиторий с одним контекстом (большинство репозиториев):
 
 ```
 /
@@ -23,29 +23,29 @@ Single-context repo (most repos):
 └── src/
 ```
 
-Multi-context repo (presence of `GLOSSARY-MAP.md` at the root):
+Мультиконтекстный репозиторий (наличие `GLOSSARY-MAP.md` в корне):
 
 ```
 /
 ├── GLOSSARY-MAP.md
-├── docs/adr/                          ← system-wide decisions
+├── docs/adr/                          ← общесистемные решения
 └── src/
     ├── ordering/
     │   ├── GLOSSARY.md
-    │   └── docs/adr/                  ← context-specific decisions
+    │   └── docs/adr/                  ← решения контекста
     └── billing/
         ├── GLOSSARY.md
         └── docs/adr/
 ```
 
-## Use the glossary's vocabulary
+## Используйте терминологию глоссария
 
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `GLOSSARY.md`. Don't drift to synonyms the glossary explicitly avoids.
+Когда вы называете доменное понятие (в заголовке тикета, предложении по рефакторингу, гипотезе, названии теста), используйте термин так, как он определён в `GLOSSARY.md`. Не используйте синонимы, которых глоссарий явно избегает.
 
-If the concept you need isn't in the glossary yet, that's a signal: either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
+Если нужного понятия в глоссарии ещё нет — это сигнал: либо вы изобретаете язык, которого в проекте нет (пересмотрите формулировку), либо есть реальный пробел (отметьте его для `/domain-modeling`).
 
-## Flag ADR conflicts
+## Явно отмечайте конфликты с ADR
 
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
+Если ваш результат противоречит существующему ADR, сообщите об этом прямо, а не меняйте решение молча:
 
-> _Contradicts ADR-0007 (event-sourced orders), but worth reopening because…_
+> _Противоречит ADR-0007 (event-sourced orders), но стоит пересмотреть, потому что…_
