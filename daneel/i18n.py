@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Final, Literal, cast
 
 UILanguage = Literal["en", "ru"]
@@ -134,8 +133,3 @@ def resolve_reply_language(argument: str | None = None) -> ReplyLanguage:
     if value in ("auto", "en", "ru"):
         return cast(ReplyLanguage, value)
     return DEFAULT_REPLY_LANGUAGE
-
-
-def ui_language_from_env() -> str | None:
-    """Read the DANEEL_LANG environment variable."""
-    return os.environ.get("DANEEL_LANG")

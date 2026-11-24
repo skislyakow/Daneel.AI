@@ -9,12 +9,11 @@ from typing import Any, Literal
 
 import httpx
 
+from . import config
 from .config import Settings
 from .i18n import DEFAULT_REPLY_LANGUAGE, build_system_prompt
 from .tools import Confirm, ToolError, ToolRegistry
 
-DEFAULT_BASE_URL = "http://localhost:11434"
-DEFAULT_MODEL = "qwen2.5:1.5b"
 MAX_TOOL_ROUNDS = 5
 
 Role = Literal["system", "user", "assistant", "tool"]
@@ -82,16 +81,18 @@ class OllamaClient:
 
     def __init__(
         self,
-        base_url: str = DEFAULT_BASE_URL,
-        model: str = DEFAULT_MODEL,
+        base_url: str | None = None,
+        model: str | None = None,
         system_prompt: str = build_system_prompt(DEFAULT_REPLY_LANGUAGE),
         *,
         client: httpx.AsyncClient | None = None,
         timeout: float = 120.0,
         tools: Sequence[dict[str, Any]] | None = None,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.model = model
+        self.base_url = (
+            config.DEFAULT_BASE_URL if base_url is None else base_url
+        ).rstrip("/")
+        self.model = config.DEFAULT_MODEL if model is None else model
         self.system_prompt = system_prompt
         self.tools = list(tools or [])
         self._client = client

@@ -3,6 +3,8 @@ import json
 import httpx
 import pytest
 
+from daneel import config
+from daneel.config import Settings
 from daneel.core import Conversation, OllamaClient, OllamaConnectionError
 from daneel.i18n import DEFAULT_REPLY_LANGUAGE, build_system_prompt
 from daneel.tools import FunctionTool, ToolRegistry
@@ -11,6 +13,17 @@ from daneel.tools import FunctionTool, ToolRegistry
 def streaming_response(chunks: list[dict]) -> httpx.Response:
     body = "\n".join(json.dumps(chunk, ensure_ascii=False) for chunk in chunks)
     return httpx.Response(200, text=body + "\n")
+
+
+def test_client_defaults_follow_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "DEFAULT_BASE_URL", "http://example:11434")
+    monkeypatch.setattr(config, "DEFAULT_MODEL", "test-model")
+
+    settings = Settings.from_env({})
+    client = OllamaClient()
+
+    assert client.base_url == settings.base_url
+    assert client.model == settings.model
 
 
 async def test_stream_answer_accumulates_and_sends_history() -> None:

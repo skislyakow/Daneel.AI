@@ -114,6 +114,8 @@ The agent logic is separated from the interface, so another UI or additional wor
 uv run pytest
 ```
 
+Coding conventions and design rules are documented in `CODING_STANDARDS.md`.
+
 ## 📦 Dependencies
 
 All dependencies are declared in `pyproject.toml`; exact versions are pinned in `uv.lock`.
