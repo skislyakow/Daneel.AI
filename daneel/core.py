@@ -26,12 +26,15 @@ class Message:
     role: Role
     content: str
     tool_calls: list[dict[str, Any]] | None = None
+    tool_name: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return the message in the Ollama API format."""
         data: dict[str, Any] = {"role": self.role, "content": self.content}
         if self.tool_calls:
             data["tool_calls"] = self.tool_calls
+        if self.tool_name:
+            data["tool_name"] = self.tool_name
         return data
 
 
@@ -178,8 +181,17 @@ class OllamaClient:
                                 arguments = {}
                         if not isinstance(arguments, dict):
                             arguments = {}
+                        index = function.get("index")
+                        call_key = call.get("id") or index
+                        if call_key is None:
+                            call_key = name
                         entry = pending_calls.setdefault(
-                            str(name), {"name": str(name), "arguments": {}}
+                            str(call_key),
+                            {
+                                "name": str(name),
+                                "arguments": {},
+                                "index": index if isinstance(index, int) else None,
+                            },
                         )
                         entry["arguments"].update(arguments)
 
@@ -245,7 +257,25 @@ class Conversation:
                     break
 
                 self.messages.append(
-                    Message("assistant", "".join(round_text), tool_calls=tool_calls)
+                    Message(
+                        "assistant",
+                        "".join(round_text),
+                        tool_calls=[
+                            {
+                                "type": "function",
+                                "function": {
+                                    "index": (
+                                        call["index"]
+                                        if isinstance(call.get("index"), int)
+                                        else position
+                                    ),
+                                    "name": call["name"],
+                                    "arguments": call["arguments"],
+                                },
+                            }
+                            for position, call in enumerate(tool_calls)
+                        ],
+                    )
                 )
                 for call in tool_calls:
                     name = str(call.get("name", ""))
@@ -256,7 +286,7 @@ class Conversation:
                         result = await self.tools.call(name, arguments, self.confirm)
                     except ToolError as exc:
                         result = f"Error: {exc}"
-                    self.messages.append(Message("tool", result))
+                    self.messages.append(Message("tool", result, tool_name=name))
                     yield ToolResultEvent(name, result)
         except OllamaError:
             del self.messages[start_len:]

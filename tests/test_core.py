@@ -5,7 +5,14 @@ import pytest
 
 from daneel import config
 from daneel.config import Settings
-from daneel.core import Conversation, OllamaClient, OllamaConnectionError
+from daneel.core import (
+    Conversation,
+    OllamaClient,
+    OllamaConnectionError,
+    TextChunk,
+    ToolCalls,
+    ToolResultEvent,
+)
 from daneel.i18n import DEFAULT_REPLY_LANGUAGE, build_system_prompt
 from daneel.tools import FunctionTool, ToolRegistry
 
@@ -141,4 +148,92 @@ async def test_tool_call_loop_executes_confirmed_tool() -> None:
     assert executed == [{"value": "hi"}]
     assert seen[0]["tools"][0]["function"]["name"] == "echo"
     assert any(m.role == "tool" and m.content == "got hi" for m in conversation.messages)
+    await http.aclose()
+
+
+@pytest.mark.parametrize("with_ids", [True, False])
+async def test_parallel_calls_to_same_tool_stay_separate(with_ids: bool) -> None:
+    executed: list[dict] = []
+
+    async def runner(arguments: dict) -> str:
+        executed.append(arguments)
+        return f"echo:{arguments['value']}"
+
+    tool = FunctionTool(
+        name="echo",
+        description="Echo a value",
+        parameters={
+            "type": "object",
+            "properties": {"value": {"type": "string"}},
+            "required": ["value"],
+        },
+        runner=runner,
+    )
+    requests: list[dict] = []
+    calls = [
+        {"function": {"index": 0, "name": "echo", "arguments": {"value": "one"}}},
+        {"function": {"index": 1, "name": "echo", "arguments": {"value": "two"}}},
+    ]
+    if with_ids:
+        calls[0]["id"] = "call_one"
+        calls[1]["id"] = "call_two"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            return streaming_response(
+                [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": calls,
+                        },
+                        "done": False,
+                    },
+                    {"message": {"role": "assistant", "content": ""}, "done": True},
+                ]
+            )
+        return streaming_response(
+            [{"message": {"role": "assistant", "content": "Готово"}, "done": True}]
+        )
+
+    async def confirm(name: str, arguments: dict) -> bool:
+        return True
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    conversation = Conversation(
+        OllamaClient(client=http),
+        tools=ToolRegistry([tool]),
+        confirm=confirm,
+    )
+
+    events = [event async for event in conversation.stream_events("Два вызова")]
+
+    assert "".join(e.text for e in events if isinstance(e, TextChunk)) == "Готово"
+    asserted_calls = [event.calls for event in events if isinstance(event, ToolCalls)]
+    assert len(asserted_calls) == 1
+    assert [call["arguments"]["value"] for call in asserted_calls[0]] == ["one", "two"]
+    assert [(e.name, e.result) for e in events if isinstance(e, ToolResultEvent)] == [
+        ("echo", "echo:one"),
+        ("echo", "echo:two"),
+    ]
+    assert executed == [{"value": "one"}, {"value": "two"}]
+    assert [m.content for m in conversation.messages if m.role == "tool"] == [
+        "echo:one",
+        "echo:two",
+    ]
+
+    assert len(requests) == 2
+    sent_calls = next(
+        message["tool_calls"]
+        for message in requests[1]["messages"]
+        if message["role"] == "assistant" and message.get("tool_calls")
+    )
+    assert [call["function"]["arguments"]["value"] for call in sent_calls] == [
+        "one",
+        "two",
+    ]
+    tool_messages = [m for m in requests[1]["messages"] if m["role"] == "tool"]
+    assert [m["tool_name"] for m in tool_messages] == ["echo", "echo"]
     await http.aclose()
