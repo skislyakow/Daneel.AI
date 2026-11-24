@@ -124,6 +124,15 @@ class DaneelApp(App[None]):
     }
     #prompt {
         margin: 0 2;
+        padding: 0 1;
+        background: $footer-background;
+        border: none;
+        border-left: heavy $primary;
+    }
+    #prompt:focus {
+        border: none;
+        border-left: heavy $primary;
+        background-tint: transparent;
     }
     #hints {
         height: 3;
