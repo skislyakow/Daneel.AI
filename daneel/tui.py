@@ -128,6 +128,7 @@ class DaneelApp(App[None]):
         background: $footer-background;
         border: none;
         border-left: heavy $primary;
+        content-align: left middle;
     }
     #prompt:focus {
         border: none;
