@@ -8,6 +8,7 @@ import sys
 from io import TextIOWrapper
 from typing import cast
 
+from daneel.cli import install_cli_confirmation
 from daneel.config import Settings
 from daneel.core import Conversation, OllamaClient, OllamaError
 from daneel.i18n import (
@@ -88,6 +89,7 @@ def main() -> None:
     conversation = Conversation(OllamaClient.from_settings(settings))
 
     if args.cli:
+        install_cli_confirmation(conversation, settings.ui_language)
         asyncio.run(run_cli(settings.ui_language, conversation))
     else:
         DaneelApp(

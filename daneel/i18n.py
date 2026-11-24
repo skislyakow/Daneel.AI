@@ -48,6 +48,8 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
         "cli_goodbye": "🤖 Goodbye, creator.",
         "cli_prompt": "You: ",
         "cli_answer_prefix": "🤖 Daneel: ",
+        "cli_confirm_prompt": "Allow tool {name} with {arguments}? [Y/n] ",
+        "cli_tool_denied": "Tool call denied: {name}",
         "cli_error": "Error: {message}",
         "note": "System",
         "unknown_command": "Unknown command: {command}. Type /help for the list.",
@@ -95,6 +97,10 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
         "cli_goodbye": "🤖 До встречи, создатель.",
         "cli_prompt": "Вы: ",
         "cli_answer_prefix": "🤖 Даниел: ",
+        "cli_confirm_prompt": (
+            "Разрешить инструмент {name} с аргументами {arguments}? [Д/н] "
+        ),
+        "cli_tool_denied": "Вызов инструмента отклонён: {name}",
         "cli_error": "Ошибка: {message}",
         "note": "Система",
         "unknown_command": "Неизвестная команда: {command}. Введите /help для списка.",
