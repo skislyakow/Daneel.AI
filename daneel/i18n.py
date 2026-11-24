@@ -30,6 +30,7 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
             "[dim]Type a message and press Enter. Ctrl+L clears the chat, "
             "Ctrl+T switches the interface language, Ctrl+C exits.[/]"
         ),
+        "hints": "Ctrl+T — Language · Ctrl+L — Clear · Ctrl+C — Quit",
         "prompt_placeholder": "Message... (Enter to send)",
         "you": "You",
         "daneel": "Daneel",
@@ -60,8 +61,12 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
     "ru": {
         "welcome": (
             "🤖 [bold cyan]Daneel.AI[/] — локальный агент, работает офлайн.\n"
-            "[dim]Введите сообщение и нажмите Enter. Ctrl+L очищает диалог, "
-            "Ctrl+T переключает язык интерфейса, Ctrl+C — выход.[/]"
+            "[dim]Введите сообщение и нажмите Enter. Ctrl+L/Д очищает диалог, "
+            "Ctrl+T/Е переключает язык интерфейса, Ctrl+C/С — выход.[/]"
+        ),
+        "hints": (
+            "Ctrl+T / Ctrl+Е — Язык · Ctrl+L / Ctrl+Д — Очистить · "
+            "Ctrl+C / Ctrl+С — Выход"
         ),
         "prompt_placeholder": "Сообщение... (Enter — отправить)",
         "you": "Вы",

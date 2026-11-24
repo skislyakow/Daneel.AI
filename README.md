@@ -35,7 +35,7 @@ Build a minimal working protocol between the user, the agent, and a local LLM, w
    uv run daneel --cli
    ```
 
-In the TUI: **Enter** sends a message (multiline text can be pasted), **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/clear`, `/help`.
+In the TUI: **Enter** sends a message (multiline text can be pasted), **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. The localized hint bar at the bottom shows both variants. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/clear`, `/help`.
 
 ## 🌍 Run from anywhere
 

@@ -1,7 +1,7 @@
 import json
 
 import httpx
-from textual.widgets import Input
+from textual.widgets import Input, Static
 
 from daneel.core import Conversation, OllamaClient
 from daneel.i18n import STRINGS, build_system_prompt
@@ -28,6 +28,7 @@ async def test_tui_submits_prompt_and_stores_answer() -> None:
         assert app.query_one("#prompt", Input).placeholder == STRINGS["en"][
             "prompt_placeholder"
         ]
+        assert app.query_one("#hints", Static).content == STRINGS["en"]["hints"]
 
         await pilot.press(*"привет")
         await pilot.press("enter")
@@ -54,6 +55,7 @@ async def test_tui_language_and_reply_commands() -> None:
         assert app.query_one("#prompt", Input).placeholder == STRINGS["ru"][
             "prompt_placeholder"
         ]
+        assert app.query_one("#hints", Static).content == STRINGS["ru"]["hints"]
 
         await pilot.press(*"/reply ru")
         await pilot.press("enter")
@@ -66,3 +68,38 @@ async def test_tui_language_and_reply_commands() -> None:
         assert app.lang == "en"
 
     await http.aclose()
+
+
+async def test_cyrillic_key_aliases() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)), ui_language="ru")
+
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+\u0435")  # Cyrillic ye, same key as T
+        await pilot.pause()
+        assert app.lang == "en"
+
+        await pilot.press("ctrl+t")
+        await pilot.pause()
+        assert app.lang == "ru"
+
+        await pilot.press(*"привет")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+        assert app.conversation.messages
+
+        await pilot.press("ctrl+\u0434")  # Cyrillic de, same key as L
+        await pilot.pause()
+        assert app.conversation.messages == []
+
+    await http.aclose()
+
+
+async def test_cyrillic_ctrl_c_quits() -> None:
+    app = DaneelApp(Conversation(OllamaClient()))
+
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+\u0441")  # Cyrillic es, same key as C
+        await pilot.pause()
+
+    assert not app.is_running
