@@ -37,6 +37,9 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
         "error_prefix": "Error",
         "connection_error": "Could not connect to Ollama. Check that the service is running.",
         "http_error": "Ollama returned an error: {detail}",
+        "tool_round_limit": (
+            "Tool-call limit reached after {detail} rounds. Try a simpler request."
+        ),
         "clear_binding": "Clear",
         "toggle_binding": "Language",
         "quit_binding": "Quit",
@@ -80,6 +83,10 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
         "error_prefix": "Ошибка",
         "connection_error": "Не удалось подключиться к Ollama. Проверьте, запущен ли сервис.",
         "http_error": "Ollama вернул ошибку: {detail}",
+        "tool_round_limit": (
+            "Лимит вызовов инструментов исчерпан после {detail} раундов. "
+            "Попробуйте упростить запрос."
+        ),
         "clear_binding": "Очистить",
         "toggle_binding": "Язык",
         "quit_binding": "Выход",

@@ -79,6 +79,12 @@ class OllamaConnectionError(OllamaError):
     message_key = "connection_error"
 
 
+class ToolRoundLimitError(OllamaError):
+    """The agent kept requesting tools until the round limit was reached."""
+
+    message_key = "tool_round_limit"
+
+
 class OllamaClient:
     """Asynchronous Ollama client with a streaming response."""
 
@@ -288,6 +294,10 @@ class Conversation:
                         result = f"Error: {exc}"
                     self.messages.append(Message("tool", result, tool_name=name))
                     yield ToolResultEvent(name, result)
+            else:
+                raise ToolRoundLimitError(str(MAX_TOOL_ROUNDS))
+        except ToolRoundLimitError:
+            raise
         except OllamaError:
             del self.messages[start_len:]
             raise

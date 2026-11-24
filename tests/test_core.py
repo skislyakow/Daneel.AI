@@ -6,12 +6,14 @@ import pytest
 from daneel import config
 from daneel.config import Settings
 from daneel.core import (
+    MAX_TOOL_ROUNDS,
     Conversation,
     OllamaClient,
     OllamaConnectionError,
     TextChunk,
     ToolCalls,
     ToolResultEvent,
+    ToolRoundLimitError,
 )
 from daneel.i18n import DEFAULT_REPLY_LANGUAGE, build_system_prompt
 from daneel.tools import FunctionTool, ToolRegistry
@@ -236,4 +238,56 @@ async def test_parallel_calls_to_same_tool_stay_separate(with_ids: bool) -> None
     ]
     tool_messages = [m for m in requests[1]["messages"] if m["role"] == "tool"]
     assert [m["tool_name"] for m in tool_messages] == ["echo", "echo"]
+    await http.aclose()
+
+
+async def test_tool_round_limit_raises_and_keeps_history() -> None:
+    async def runner(arguments: dict) -> str:
+        return "ok"
+
+    tool = FunctionTool(
+        name="echo",
+        description="Echo a value",
+        parameters={"type": "object", "properties": {}, "required": []},
+        runner=runner,
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return streaming_response(
+            [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "call",
+                                "function": {
+                                    "index": 0,
+                                    "name": "echo",
+                                    "arguments": {},
+                                },
+                            }
+                        ],
+                    },
+                    "done": True,
+                }
+            ]
+        )
+
+    async def confirm(name: str, arguments: dict) -> bool:
+        return True
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    conversation = Conversation(
+        OllamaClient(client=http),
+        tools=ToolRegistry([tool]),
+        confirm=confirm,
+    )
+
+    with pytest.raises(ToolRoundLimitError):
+        [event async for event in conversation.stream_events("Цикл")]
+
+    assert conversation.messages[0].role == "user"
+    assert len([m for m in conversation.messages if m.role == "tool"]) == MAX_TOOL_ROUNDS
     await http.aclose()
