@@ -103,3 +103,23 @@ async def test_cyrillic_ctrl_c_quits() -> None:
         await pilot.pause()
 
     assert not app.is_running
+
+
+async def test_tui_theme_command() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        assert app.current_theme.name == "daneel"
+
+        await pilot.press(*"/theme dracula")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.current_theme.name == "dracula"
+
+        await pilot.press(*"/theme")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.current_theme.name == "dracula"
+
+    await http.aclose()

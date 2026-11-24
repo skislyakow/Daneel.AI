@@ -13,6 +13,7 @@ from .i18n import (
     resolve_reply_language,
     resolve_ui_language,
 )
+from .theme import DEFAULT_THEME, resolve_theme
 
 DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "qwen2.5:1.5b"
@@ -27,6 +28,7 @@ class Settings:
     workspace: Path = field(default_factory=Path.cwd)
     ui_language: UILanguage = "en"
     reply_language: ReplyLanguage = "auto"
+    theme: str = DEFAULT_THEME
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Settings:
@@ -38,12 +40,14 @@ class Settings:
             workspace=Path(env.get("DANEEL_WORKSPACE", str(Path.cwd()))).expanduser(),
             ui_language=resolve_ui_language(None, env.get("DANEEL_LANG")),
             reply_language=resolve_reply_language(env.get("DANEEL_REPLY")),
+            theme=resolve_theme(None, env.get("DANEEL_THEME")),
         )
 
     def with_overrides(
         self,
         ui_language: UILanguage | None = None,
         reply_language: ReplyLanguage | None = None,
+        theme: str | None = None,
     ) -> Settings:
         """Return a copy with CLI values overriding the environment."""
         return Settings(
@@ -52,4 +56,5 @@ class Settings:
             workspace=self.workspace,
             ui_language=ui_language or self.ui_language,
             reply_language=reply_language or self.reply_language,
+            theme=resolve_theme(theme, self.theme) if theme else self.theme,
         )

@@ -12,6 +12,7 @@ from textual.widgets import Header, Input, Static
 
 from .core import Conversation, OllamaError
 from .i18n import ReplyLanguage, UILanguage, build_system_prompt, t
+from .theme import available_themes, register_themes
 
 
 class DaneelApp(App[None]):
@@ -62,11 +63,13 @@ class DaneelApp(App[None]):
         conversation: Conversation,
         ui_language: UILanguage = "en",
         reply_language: ReplyLanguage = "auto",
+        theme_name: str = "daneel",
     ) -> None:
         super().__init__()
         self.conversation = conversation
         self.lang = ui_language
         self.reply_language = reply_language
+        self.theme_name = theme_name
         self._busy = False
         self._welcome: Static | None = None
         self._hints: Static | None = None
@@ -83,7 +86,9 @@ class DaneelApp(App[None]):
             yield self._hints
 
     def on_mount(self) -> None:
-        """Apply the selected language and focus the input."""
+        """Register themes, apply the selected language, and focus the input."""
+        register_themes(self)
+        self.theme = self.theme_name
         self._apply_language()
         self.query_one("#prompt", Input).focus()
 
@@ -159,6 +164,17 @@ class DaneelApp(App[None]):
                 )
             else:
                 await self._note(t(self.lang, "usage_reply"))
+        elif name == "theme":
+            if not argument:
+                await self._note(
+                    t(self.lang, "theme_list", themes=", ".join(available_themes()))
+                )
+            elif argument in available_themes():
+                self.theme_name = argument
+                self.theme = argument
+                await self._note(t(self.lang, "theme_changed", theme=argument))
+            else:
+                await self._note(t(self.lang, "theme_unknown", theme=argument))
         elif name == "clear":
             await self.action_clear()
         elif name == "help":

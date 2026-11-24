@@ -13,6 +13,7 @@
 - `uv run pytest` — запускать после изменений в `daneel/`.
 - `uv run daneel` — TUI; `uv run daneel --cli` — простой текстовый режим.
 - `uv run daneel --lang ru --reply ru` — русский интерфейс и русские ответы агента.
+- `uv run daneel --theme dracula` — выбрать тему; в TUI — `/theme <имя>` или `/theme` для списка.
 - `uv tool install --editable .` — глобальная команда `daneel` из любого каталога.
 
 ## Архитектура
@@ -20,7 +21,8 @@
 - Интерфейс живёт в `daneel/tui.py`, логика Ollama и история — в `daneel/core.py`. Не переноси HTTP-код в TUI.
 - Строки интерфейса, разрешение языка и системный промпт находятся в `daneel/i18n.py`.
 - Ответы Ollama потоковые (`stream: true`); новые адаптеры должны потреблять `Conversation.stream_answer()`.
-- Настройки окружения (`OLLAMA_BASE_URL`, `DANEEL_MODEL`, `DANEEL_WORKSPACE`, `DANEEL_LANG`, `DANEEL_REPLY`) собираются в `daneel/config.py`; CLI-флаги имеют приоритет.
+- Настройки окружения (`OLLAMA_BASE_URL`, `DANEEL_MODEL`, `DANEEL_WORKSPACE`, `DANEEL_LANG`, `DANEEL_REPLY`, `DANEEL_THEME`) собираются в `daneel/config.py`; CLI-флаги имеют приоритет.
+- Темы описаны в `daneel/theme.py`: фирменные `daneel`/`daneel-light` плюс встроенные Textual. Шрифт задаёт терминал — приложение его не меняет.
 - Инструменты описаны в `daneel/tools/`; по умолчанию их нет, а подтверждение обязательно. Не добавляй тихое выполнение операций: `ToolRegistry.call()` должен отклонять вызов без подтверждения.
 - `DANEEL_WORKSPACE` — граница для будущих файловых операций; не используй для этого текущий каталог «по умолчанию».
 - Код, комментарии и докстринги — на английском; `README.md` — на английском, остальные md-файлы — на русском.

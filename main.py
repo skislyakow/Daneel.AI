@@ -68,6 +68,11 @@ def main() -> None:
         default=None,
         help="agent reply language; auto follows the user (overrides DANEEL_REPLY)",
     )
+    parser.add_argument(
+        "--theme",
+        default=None,
+        help="Textual theme name (overrides DANEEL_THEME)",
+    )
     args = parser.parse_args()
 
     settings = Settings.from_env()
@@ -77,6 +82,8 @@ def main() -> None:
         settings = settings.with_overrides(
             reply_language=resolve_reply_language(args.reply)
         )
+    if args.theme:
+        settings = settings.with_overrides(theme=args.theme)
 
     conversation = Conversation(OllamaClient.from_settings(settings))
 
@@ -87,6 +94,7 @@ def main() -> None:
             conversation,
             ui_language=settings.ui_language,
             reply_language=settings.reply_language,
+            theme_name=settings.theme,
         ).run()
 
 

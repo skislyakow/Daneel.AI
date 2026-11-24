@@ -51,9 +51,15 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
         "unknown_command": "Unknown command: {command}. Type /help for the list.",
         "usage_lang": "Usage: /lang en|ru",
         "usage_reply": "Usage: /reply auto|en|ru",
-        "help_text": "Commands: /lang en|ru, /reply auto|en|ru, /clear, /help",
+        "usage_theme": "Usage: /theme <name> (or /theme to list)",
+        "help_text": (
+            "Commands: /lang en|ru, /reply auto|en|ru, /theme <name>, /clear, /help"
+        ),
         "lang_changed": "Interface language: {language}",
         "reply_changed": "Agent replies: {language}",
+        "theme_changed": "Theme: {theme}",
+        "theme_list": "Themes: {themes}",
+        "theme_unknown": "Unknown theme: {theme}",
         "language_en": "English",
         "language_ru": "Russian",
         "reply_auto": "same as your message",
@@ -88,9 +94,15 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
         "unknown_command": "Неизвестная команда: {command}. Введите /help для списка.",
         "usage_lang": "Использование: /lang en|ru",
         "usage_reply": "Использование: /reply auto|en|ru",
-        "help_text": "Команды: /lang en|ru, /reply auto|en|ru, /clear, /help",
+        "usage_theme": "Использование: /theme <имя> (или /theme для списка)",
+        "help_text": (
+            "Команды: /lang en|ru, /reply auto|en|ru, /theme <имя>, /clear, /help"
+        ),
         "lang_changed": "Язык интерфейса: {language}",
         "reply_changed": "Язык ответов агента: {language}",
+        "theme_changed": "Тема: {theme}",
+        "theme_list": "Темы: {themes}",
+        "theme_unknown": "Неизвестная тема: {theme}",
         "language_en": "английский",
         "language_ru": "русский",
         "reply_auto": "как в вашем сообщении",

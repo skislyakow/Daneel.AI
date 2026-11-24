@@ -35,7 +35,7 @@ Build a minimal working protocol between the user, the agent, and a local LLM, w
    uv run daneel --cli
    ```
 
-In the TUI: **Enter** sends a message (multiline text can be pasted), **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. The localized hint bar at the bottom shows both variants. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/clear`, `/help`.
+In the TUI: **Enter** sends a message (multiline text can be pasted), **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. The localized hint bar at the bottom shows both variants. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/clear`, `/help`.
 
 ## 🌍 Run from anywhere
 
@@ -66,6 +66,7 @@ Settings are read from environment variables; CLI flags take precedence.
 | `DANEEL_WORKSPACE` | Root directory for future agent operations | current directory |
 | `DANEEL_LANG` | Interface language (`en`/`ru`) | `en` |
 | `DANEEL_REPLY` | Reply mode (`auto`/`en`/`ru`) | `auto` |
+| `DANEEL_THEME` | Textual theme name | `daneel` |
 
 `DANEEL_WORKSPACE` is the safety boundary for tools that will read or change files. Since the agent can be started from anywhere, do not rely on the current directory for operations.
 
@@ -83,15 +84,29 @@ DANEEL_LANG=ru DANEEL_REPLY=ru daneel --cli  # language via environment
 * `--reply {auto,en,ru}` sets the reply language. `auto` (the default) tells the model to answer in the same language as the user's message; `en` and `ru` force a specific language. Use `/reply` in the TUI to change it during a session.
 * The system prompt itself stays in English; only its final language instruction changes. UI strings live in `daneel/i18n.py`.
 
+## 🎨 Themes
+
+Textual themes control the whole palette (chat log, input, panels, hint bar). Two custom themes ship with the project — `daneel` (dark, default) and `daneel-light` — and all built-in Textual themes are available too (`nord`, `dracula`, `gruvbox`, `catppuccin-*`, `solarized-*`, `rose-pine*` and others).
+
+```bash
+uv run daneel --theme dracula
+DANEEL_THEME=nord daneel
+```
+
+In the TUI, run `/theme <name>` to switch instantly or `/theme` to list available themes. Unknown names fall back to the default.
+
+The terminal font is controlled by your terminal emulator, not by the application. A monospace font with good Cyrillic coverage (for example Cascadia Code or JetBrains Mono) is recommended.
+
 ## 🧩 Code layout
 
 * `daneel/core.py` — core logic: streaming `/api/chat`, conversation history, the tool-call loop, and error handling.
 * `daneel/config.py` — environment-based settings with CLI overrides.
 * `daneel/i18n.py` — interface strings, language resolution, and system prompt assembly.
+* `daneel/theme.py` — custom Daneel themes, theme resolution, and registration.
 * `daneel/tools/` — tool contracts and registry; the extension point for agent operations. No tools are enabled by default, and confirmation is mandatory.
 * `daneel/tui.py` — thin Textual layer: chat log, input field, localized messages.
 * `main.py` — entry point; `--cli` selects the plain-text mode.
-* `tests/` — core, config, i18n, tools, and TUI tests with a mock HTTP transport.
+* `tests/` — core, config, i18n, theme, tools, and TUI tests with a mock HTTP transport.
 
 The agent logic is separated from the interface, so another UI or additional workers can be added without rewriting the core. Run the tests with:
 

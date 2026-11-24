@@ -13,6 +13,7 @@ def test_defaults(tmp_path: Path, monkeypatch) -> None:
     assert settings.workspace == tmp_path
     assert settings.ui_language == "en"
     assert settings.reply_language == "auto"
+    assert settings.theme == "daneel"
 
 
 def test_environment_overrides() -> None:
@@ -23,6 +24,7 @@ def test_environment_overrides() -> None:
             "DANEEL_WORKSPACE": "C:/work",
             "DANEEL_LANG": "ru",
             "DANEEL_REPLY": "ru",
+            "DANEEL_THEME": "dracula",
         }
     )
 
@@ -31,13 +33,20 @@ def test_environment_overrides() -> None:
     assert settings.workspace == Path("C:/work")
     assert settings.ui_language == "ru"
     assert settings.reply_language == "ru"
+    assert settings.theme == "dracula"
 
 
 def test_cli_values_override_environment() -> None:
-    settings = Settings.from_env({"DANEEL_LANG": "ru", "DANEEL_REPLY": "ru"})
+    settings = Settings.from_env(
+        {"DANEEL_LANG": "ru", "DANEEL_REPLY": "ru", "DANEEL_THEME": "dracula"}
+    )
 
-    overridden = settings.with_overrides(ui_language="en", reply_language="auto")
+    overridden = settings.with_overrides(
+        ui_language="en", reply_language="auto", theme="nord"
+    )
 
     assert overridden.ui_language == "en"
     assert overridden.reply_language == "auto"
+    assert overridden.theme == "nord"
     assert settings.ui_language == "ru"
+    assert settings.theme == "dracula"
