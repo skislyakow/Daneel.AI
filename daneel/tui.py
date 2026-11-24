@@ -127,7 +127,7 @@ class DaneelApp(App[None]):
     }
     #hints {
         height: 3;
-        margin: 0 2;
+        margin: 1 2 1 2;
         padding: 0 1;
         border: round $primary;
         content-align: left middle;
