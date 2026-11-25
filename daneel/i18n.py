@@ -31,8 +31,6 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
         ),
         "hints": "Ctrl+T — Language · Ctrl+L — Clear · Ctrl+C — Quit",
         "prompt_placeholder": "Message... (Enter to send)",
-        "you": "You",
-        "daneel": "Daneel",
         "thinking": "thinking…",
         "error_prefix": "Error",
         "connection_error": "Could not connect to Ollama. Check that the service is running.",
@@ -89,8 +87,6 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
             "Ctrl+C / Ctrl+С — Выход"
         ),
         "prompt_placeholder": "Сообщение... (Enter — отправить)",
-        "you": "Вы",
-        "daneel": "Даниел",
         "thinking": "думает…",
         "error_prefix": "Ошибка",
         "connection_error": "Не удалось подключиться к Ollama. Проверьте, запущен ли сервис.",

@@ -163,14 +163,23 @@ class DaneelApp(App[None]):
         padding: 1 2;
     }
     .message {
-        margin-bottom: 1;
+        margin: 0 0 1 0;
         width: 100%;
+        min-height: 3;
+        content-align: left middle;
     }
     .user {
+        background: $footer-background;
+        border: none;
+        border-left: heavy $primary;
+        padding: 1 1;
         color: $text;
     }
     .assistant {
-        color: $success;
+        background: $panel-darken-1;
+        border: none;
+        padding: 1 1 1 2;
+        color: $text;
     }
     .error {
         color: $error;
@@ -405,25 +414,16 @@ class DaneelApp(App[None]):
         prompt.disabled = True
         self.sub_title = t(self.lang, "thinking")
 
-        await log.mount(
-            Static(
-                f"[bold]{t(self.lang, 'you')}:[/] {escape(text)}",
-                classes="message user",
-            )
-        )
-        self._transcript.append(f"{t(self.lang, 'you')}: {text}")
-        answer = Static(
-            f"[bold green]{t(self.lang, 'daneel')}:[/] ", classes="message assistant"
-        )
+        await log.mount(Static(escape(text), classes="message user"))
+        self._transcript.append(text)
+        answer = Static("", classes="message assistant")
         await log.mount(answer)
 
         received = ""
         try:
             async for chunk in self.conversation.stream_answer(text):
                 received += chunk
-                answer.update(
-                    f"[bold green]{t(self.lang, 'daneel')}:[/] {escape(received)}"
-                )
+                answer.update(escape(received))
                 log.scroll_end(animate=False)
         except OllamaError as exc:
             message = t(self.lang, exc.message_key, detail=exc.detail)
@@ -433,9 +433,8 @@ class DaneelApp(App[None]):
             )
             answer.set_class(True, "error")
         else:
-            answer_line = f"{t(self.lang, 'daneel')}: {received}"
-            self._transcript.append(answer_line)
-            self._last_answer = answer_line
+            self._transcript.append(received)
+            self._last_answer = received
         finally:
             self._busy = False
             prompt.disabled = False

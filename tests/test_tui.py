@@ -62,6 +62,21 @@ async def test_tui_submits_prompt_and_stores_answer() -> None:
     await http.aclose()
 
 
+async def test_chat_messages_have_no_speaker_labels() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"привет")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        assert app.query_one(".message.user", Static).content == "привет"
+        assert app.query_one(".message.assistant", Static).content == "Привет!"
+
+    await http.aclose()
+
+
 async def test_tui_language_and_reply_commands() -> None:
     http = mock_http()
     app = DaneelApp(Conversation(OllamaClient(client=http)))
@@ -259,8 +274,8 @@ async def test_copy_command_copies_visible_transcript(
         await pilot.press(*"/copy")
         await pilot.press("enter")
 
-        assert "You: привет" in app.clipboard
-        assert "Daneel: Привет!" in app.clipboard
+        assert "привет" in app.clipboard
+        assert "Привет!" in app.clipboard
         assert "Interface language: EN" in app.clipboard
         assert "running offline" not in app.clipboard
         assert STRINGS["en"]["copied"] in notified
@@ -279,7 +294,7 @@ async def test_copy_last_copies_only_the_answer() -> None:
         await pilot.press(*"/copy last")
         await pilot.press("enter")
 
-        assert app.clipboard == "Daneel: Привет!"
+        assert app.clipboard == "Привет!"
 
     await http.aclose()
 
@@ -307,7 +322,7 @@ async def test_copy_last_uses_the_most_recent_answer() -> None:
         await pilot.press(*"/copy last")
         await pilot.press("enter")
 
-        assert app.clipboard == "Daneel: Second"
+        assert app.clipboard == "Second"
 
     await http.aclose()
 

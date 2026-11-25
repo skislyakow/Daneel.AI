@@ -53,7 +53,7 @@ daneel
 daneel --cli --lang ru --reply ru
 ```
 
-`--editable` means source changes are picked up without reinstalling. After changing dependencies, re-run the install command. Remove the tool with `uv tool uninstall daneel`.
+`--editable` means source changes are picked up without reinstalling. After changing dependencies, re-run `uv tool install --editable --force .` so the tool environment picks up the new packages. Remove the tool with `uv tool uninstall daneel`.
 
 ## ⚙️ Configuration
 
