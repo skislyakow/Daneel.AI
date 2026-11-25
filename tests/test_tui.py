@@ -1,5 +1,6 @@
 import asyncio
 import json
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -10,6 +11,7 @@ from textual.widgets import OptionList, Static
 
 from daneel import clipboard
 from daneel.commands import COMMANDS
+from daneel.config import Preferences, PreferencesStore
 from daneel.core import Conversation, Message, OllamaClient
 from daneel.i18n import STRINGS, build_system_prompt
 from daneel.theme import available_themes
@@ -923,6 +925,47 @@ async def test_reply_choices_apply_immediately() -> None:
         await pilot.pause()
         assert app.reply_language == "ru"
         assert app.conversation.client.system_prompt == build_system_prompt("ru")
+
+    await http.aclose()
+
+
+async def test_tui_settings_changes_are_saved(tmp_path: Path) -> None:
+    http = mock_http()
+    path = tmp_path / "settings.json"
+    app = DaneelApp(
+        Conversation(OllamaClient(client=http)),
+        preferences=PreferencesStore(path),
+    )
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/lang ru")
+        await pilot.press("enter")
+        await pilot.press(*"/reply ru")
+        await pilot.press("enter")
+        await pilot.press(*"/theme dracula")
+        await pilot.press("enter")
+        await pilot.pause()
+
+    assert PreferencesStore.load(path).preferences == Preferences(
+        ui_language="ru", reply_language="ru", theme="dracula"
+    )
+
+    await http.aclose()
+
+
+async def test_language_toggle_is_saved(tmp_path: Path) -> None:
+    http = mock_http()
+    path = tmp_path / "settings.json"
+    app = DaneelApp(
+        Conversation(OllamaClient(client=http)),
+        preferences=PreferencesStore(path),
+    )
+
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+t")
+        await pilot.pause()
+
+    assert PreferencesStore.load(path).preferences.ui_language == "ru"
 
     await http.aclose()
 

@@ -71,6 +71,8 @@ Settings are read from environment variables; CLI flags take precedence.
 
 `DANEEL_WORKSPACE` is the safety boundary for tools that will read or change files. Since the agent can be started from anywhere, do not rely on the current directory for operations.
 
+The interface language, reply mode, and theme are persisted in `settings.json` in the platform-specific user config directory (`platformdirs`). Changes made in the TUI are saved immediately. Explicit environment variables and CLI flags override the saved values **and become the new saved values**; when neither is provided, the saved values are used.
+
 ## 🌐 Languages
 
 The interface is English by default; the agent's reply language is configured independently.

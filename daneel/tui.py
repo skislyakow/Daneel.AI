@@ -19,6 +19,7 @@ from textual.widgets._option_list import Option
 
 from .clipboard import read_text
 from .commands import COMMANDS, Command, MenuEntry, command_named, matching_commands
+from .config import PreferencesStore
 from .confirmation import install_confirmation, render_arguments
 from .core import Conversation, Message as ChatMessage, OllamaError
 from .i18n import ReplyLanguage, UILanguage, build_system_prompt, t
@@ -273,6 +274,7 @@ class DaneelApp(App[None]):
         reply_language: ReplyLanguage = "auto",
         theme_name: str = "daneel",
         store: SessionStore | None = None,
+        preferences: PreferencesStore | None = None,
     ) -> None:
         super().__init__()
         self.conversation = conversation
@@ -280,6 +282,7 @@ class DaneelApp(App[None]):
         self.reply_language = reply_language
         self.theme_name = theme_name
         self.store = store or SessionStore(":memory:")
+        self.preferences = preferences
         self.current_session_id: int | None = None
         self._busy = False
         self._welcome: Static | None = None
@@ -379,6 +382,11 @@ class DaneelApp(App[None]):
             self._toast(t(self.lang, "copied"))
         else:
             self._toast(t(self.lang, "nothing_selected"), severity="warning")
+
+    def _remember(self, **changes: str) -> None:
+        """Persist a preference changed from the interface."""
+        if self.preferences is not None:
+            self.preferences.update(**changes)
 
     def _toast(self, text: str, severity: SeverityLevel = "information") -> None:
         """Show a short-lived notification instead of a chat log line."""
@@ -707,6 +715,7 @@ class DaneelApp(App[None]):
             if argument in {"en", "ru"}:
                 self.lang = cast(UILanguage, argument)
                 self._apply_language()
+                self._remember(ui_language=argument)
                 self._toast(
                     t(self.lang, "lang_changed", language=argument.upper())
                 )
@@ -716,6 +725,7 @@ class DaneelApp(App[None]):
             if argument in {"auto", "en", "ru"}:
                 self.reply_language = cast(ReplyLanguage, argument)
                 self.conversation.client.system_prompt = build_system_prompt(argument)
+                self._remember(reply_language=argument)
                 self._toast(
                     t(self.lang, "reply_changed", language=argument.upper())
                 )
@@ -729,6 +739,7 @@ class DaneelApp(App[None]):
             elif argument in available_themes():
                 self.theme_name = argument
                 self.theme = argument
+                self._remember(theme=argument)
                 self._toast(t(self.lang, "theme_changed", theme=argument))
             else:
                 self._toast(
@@ -816,6 +827,7 @@ class DaneelApp(App[None]):
             return
         self.lang = "ru" if self.lang == "en" else "en"
         self._apply_language()
+        self._remember(ui_language=self.lang)
         self._toast(t(self.lang, "lang_changed", language=self.lang.upper()))
 
     async def action_clear(self) -> None:

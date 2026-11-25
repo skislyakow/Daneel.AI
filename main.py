@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from io import TextIOWrapper
 from typing import cast
 
 from daneel.cli import cli_confirmation
 from daneel.confirmation import install_confirmation
-from daneel.config import Settings
+from daneel.config import PreferencesStore, Settings
 from daneel.core import Conversation, OllamaClient, OllamaError
 from daneel.i18n import (
     UILanguage,
@@ -78,15 +79,33 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    settings = Settings.from_env()
+    preferences = PreferencesStore.load()
+    settings = Settings.from_env(
+        os.environ, preferences=preferences.preferences.with_environment(os.environ)
+    )
+    remember: dict[str, str] = {}
+    if any(
+        key in os.environ
+        for key in ("DANEEL_LANG", "DANEEL_REPLY", "DANEEL_THEME")
+    ):
+        remember = {
+            "ui_language": settings.ui_language,
+            "reply_language": settings.reply_language,
+            "theme": settings.theme,
+        }
     if args.lang:
         settings = settings.with_overrides(ui_language=resolve_ui_language(args.lang))
+        remember["ui_language"] = settings.ui_language
     if args.reply:
         settings = settings.with_overrides(
             reply_language=resolve_reply_language(args.reply)
         )
+        remember["reply_language"] = settings.reply_language
     if args.theme:
         settings = settings.with_overrides(theme=args.theme)
+        remember["theme"] = settings.theme
+    if remember:
+        preferences.update(**remember)
 
     conversation = Conversation(OllamaClient.from_settings(settings))
     store = SessionStore(settings.session_db)
@@ -106,6 +125,7 @@ def main() -> None:
             reply_language=settings.reply_language,
             theme_name=settings.theme,
             store=store,
+            preferences=preferences,
         ).run()
 
 

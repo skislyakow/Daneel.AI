@@ -22,7 +22,7 @@
 - Интерфейс живёт в `daneel/tui.py`, логика Ollama и история — в `daneel/core.py`. Не переноси HTTP-код в TUI.
 - Строки интерфейса, разрешение языка и системный промпт находятся в `daneel/i18n.py`.
 - Ответы Ollama потоковые (`stream: true`); новые адаптеры должны потреблять `Conversation.stream_answer()`.
-- Настройки окружения (`OLLAMA_BASE_URL`, `DANEEL_MODEL`, `DANEEL_WORKSPACE`, `DANEEL_LANG`, `DANEEL_REPLY`, `DANEEL_THEME`, `DANEEL_SESSION_DB`) собираются в `daneel/config.py`; CLI-флаги имеют приоритет.
+- Настройки окружения (`OLLAMA_BASE_URL`, `DANEEL_MODEL`, `DANEEL_WORKSPACE`, `DANEEL_LANG`, `DANEEL_REPLY`, `DANEEL_THEME`, `DANEEL_SESSION_DB`) собираются в `daneel/config.py`; CLI-флаги имеют приоритет. Язык интерфейса, язык ответов и тема сохраняются в `settings.json` из user config dir (`platformdirs`); изменения из TUI и явные env/CLI-значения перезаписывают файл.
 - История сессий — в `daneel/storage.py` (SQLite); SQL только в этом модуле, автосохранение после каждого обмена.
 - Темы описаны в `daneel/theme.py`: фирменные `daneel`/`daneel-light` плюс встроенные Textual. Шрифт задаёт терминал — приложение его не меняет.
 - Инструменты описаны в `daneel/tools/`; по умолчанию их нет, а подтверждение обязательно. Не добавляй тихое выполнение операций: `ToolRegistry.call()` должен отклонять вызов без подтверждения.
