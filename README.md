@@ -35,7 +35,7 @@ Build a minimal working protocol between the user, the agent, and a local LLM, w
    uv run daneel --cli
    ```
 
-In the TUI: type into the multiline input (it grows with the content), **Enter** sends the whole message, **Shift+Enter** inserts a newline. **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. The localized hint bar at the bottom shows both variants. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/clear`, `/help`.
+In the TUI: type into the multiline input (it grows with the content), **Enter** sends the whole message, **Shift+Enter** inserts a newline. **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. The localized hint bar at the bottom shows both variants. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/sessions`, `/load <id>`, `/new`, `/clear`, `/help`. `/help` and `/sessions` open a right-hand sidebar; close it with **Escape** or the Close button.
 
 ## 🌍 Run from anywhere
 
@@ -117,9 +117,10 @@ Copying uses the terminal clipboard protocol (OSC52), which works in most termin
 
 Every completed exchange is saved automatically to a local SQLite database, so the context survives `Ctrl+C`.
 
-* `/sessions` — list recent sessions with ids, titles and message counts.
-* `/load <id>` — restore a session and rebuild the chat log.
+* `/sessions` — open a right-hand sidebar with recent sessions; click one or press Enter to load it.
+* `/load <id>` — textual variant of the same action.
 * `/new` — start a fresh session.
+* The sidebar also has a Delete button with a confirmation dialog. Close it with Escape or the Close button.
 
 The database path comes from `DANEEL_SESSION_DB` or the platform-specific user data directory (`platformdirs`). The file is created automatically. Sessions keep the full message history, including tool calls, but only user and agent text is rendered in the chat.
 

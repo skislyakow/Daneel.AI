@@ -12,7 +12,8 @@ from textual.events import MouseDown
 from textual.message import Message
 from textual.notifications import SeverityLevel
 from textual.screen import ModalScreen
-from textual.widgets import Button, Header, Static, TextArea
+from textual.widgets import Button, Header, OptionList, Static, TextArea
+from textual.widgets._option_list import Option
 
 from .clipboard import read_text
 from .confirmation import install_confirmation, render_arguments
@@ -78,11 +79,11 @@ class PromptInput(TextArea):
             self.focus()
 
 
-class ToolConfirmationScreen(ModalScreen[bool]):
-    """Modal dialog asking whether a tool call may run."""
+class ConfirmScreen(ModalScreen[bool]):
+    """Modal dialog asking for a yes/no decision."""
 
     CSS = """
-    ToolConfirmationScreen {
+    ConfirmScreen {
         align: center middle;
     }
     #confirm-dialog {
@@ -102,16 +103,22 @@ class ToolConfirmationScreen(ModalScreen[bool]):
     }
     """
 
-    def __init__(self, question: str, language: UILanguage) -> None:
+    def __init__(
+        self,
+        question: str,
+        language: UILanguage,
+        title_key: str = "confirm_title",
+    ) -> None:
         super().__init__()
         self.question = question
         self.language = language
+        self.title_key = title_key
 
     def compose(self) -> ComposeResult:
         """Build the question and the two decision buttons."""
         with Vertical(id="confirm-dialog"):
             yield Static(
-                f"[bold]{t(self.language, 'confirm_title')}[/]",
+                f"[bold]{t(self.language, self.title_key)}[/]",
                 id="confirm-title",
             )
             yield Static(self.question, id="confirm-question")
@@ -220,6 +227,31 @@ class DaneelApp(App[None]):
         margin-top: 1;
         margin-bottom: 0;
     }
+    #sidebar {
+        dock: right;
+        width: 44;
+        height: 1fr;
+        display: none;
+        padding: 1 1;
+        background: $panel;
+        border-left: vkey $primary;
+    }
+    #sidebar-title {
+        color: $primary;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    #session-list {
+        height: 1fr;
+        margin-bottom: 1;
+    }
+    #session-actions {
+        height: auto;
+    }
+    #session-actions Button {
+        width: 100%;
+        margin-bottom: 1;
+    }
     """
 
     def __init__(
@@ -242,6 +274,8 @@ class DaneelApp(App[None]):
         self._hints: Static | None = None
         self._transcript: list[str] = []
         self._last_answer: str | None = None
+        self._sidebar_mode: str | None = None
+        self._session_options: dict[str, int] = {}
 
     def compose(self) -> ComposeResult:
         """Build the initial widget tree."""
@@ -255,6 +289,8 @@ class DaneelApp(App[None]):
             )
             self._hints = Static(t(self.lang, "hints"), id="hints")
             yield self._hints
+        with Vertical(id="sidebar"):
+            pass
 
     def on_mount(self) -> None:
         """Register themes, apply the selected language, and focus the input."""
@@ -277,7 +313,7 @@ class DaneelApp(App[None]):
 
         async def ask() -> bool:
             return await self.push_screen_wait(
-                ToolConfirmationScreen(question, self.lang)
+                ConfirmScreen(question, self.lang)
             )
 
         allowed = await self.run_worker(ask()).wait()
@@ -340,7 +376,7 @@ class DaneelApp(App[None]):
 
         log = self.query_one("#log", VerticalScroll)
         for child in list(log.children):
-            child.remove()
+            await child.remove()
         self._welcome = Static(t(self.lang, "welcome"), classes="message")
         await log.mount(self._welcome)
 
@@ -357,6 +393,181 @@ class DaneelApp(App[None]):
                 self._transcript.append(message.content)
                 self._last_answer = message.content
         log.scroll_end(animate=False)
+
+    def _sidebar_container(self) -> Vertical:
+        return self.query_one("#sidebar", Vertical)
+
+    async def _clear_sidebar(self) -> None:
+        sidebar = self._sidebar_container()
+        for child in list(sidebar.children):
+            await child.remove()
+
+    async def _open_help_sidebar(self) -> None:
+        """Show command descriptions in the right-hand panel."""
+        keys = (
+            "help_lang",
+            "help_reply",
+            "help_theme",
+            "help_sessions",
+            "help_load_desc",
+            "help_new",
+            "help_clear",
+            "help_copy",
+            "help_help",
+        )
+        await self._clear_sidebar()
+        sidebar = self._sidebar_container()
+        await sidebar.mount(
+            Static(t(self.lang, "sidebar_help_title"), id="sidebar-title")
+        )
+        await sidebar.mount(Static("\n".join(t(self.lang, key) for key in keys)))
+        sidebar.styles.display = "block"
+        self._sidebar_mode = "help"
+
+    async def _open_sessions_sidebar(self) -> None:
+        """Show stored sessions in the right-hand panel."""
+        sessions = self.store.list_sessions(limit=20)
+        await self._clear_sidebar()
+        sidebar = self._sidebar_container()
+        await sidebar.mount(
+            Static(t(self.lang, "sidebar_sessions_title"), id="sidebar-title")
+        )
+        if not sessions:
+            await sidebar.mount(Static(t(self.lang, "sessions_empty")))
+        else:
+            self._session_options = {}
+            options: list[Option] = []
+            for session in sessions:
+                option_id = f"session-{session.id}"
+                self._session_options[option_id] = session.id
+                options.append(
+                    Option(
+                        t(
+                            self.lang,
+                            "session_line",
+                            id=session.id,
+                            title=session.title,
+                            count=session.message_count,
+                            date=session.updated_at[:16].replace("T", " "),
+                        ),
+                        id=option_id,
+                    )
+                )
+            option_list = OptionList(*options, id="session-list")
+            await sidebar.mount(option_list)
+            if self.current_session_id is not None:
+                current = f"session-{self.current_session_id}"
+                if current in self._session_options:
+                    option_list.highlighted = list(self._session_options).index(
+                        current
+                    )
+            actions = Vertical(id="session-actions")
+            await sidebar.mount(actions)
+            await actions.mount(
+                Button(t(self.lang, "sidebar_load"), id="session-load", variant="primary")
+            )
+            await actions.mount(
+                Button(t(self.lang, "sidebar_delete"), id="session-delete", variant="error")
+            )
+            await actions.mount(
+                Button(t(self.lang, "sidebar_close"), id="sidebar-close")
+            )
+        sidebar.styles.display = "block"
+        self._sidebar_mode = "sessions"
+
+    def _close_sidebar(self) -> None:
+        """Hide the right-hand panel and return focus to the input."""
+        self._sidebar_container().styles.display = "none"
+        self._sidebar_mode = None
+        self._session_options.clear()
+        self.query_one("#prompt", PromptInput).focus()
+
+    def _highlighted_session_id(self) -> int | None:
+        """Return the id of the highlighted session in the sidebar."""
+        option_list = self.query_one("#session-list", OptionList)
+        if option_list.highlighted is None:
+            return None
+        option = option_list.get_option_at_index(option_list.highlighted)
+        return self._session_options.get(option.id or "")
+
+    async def _load_session(self, session_id: int) -> bool:
+        """Load a stored session into the conversation and chat log."""
+        if self.store.get_session(session_id) is None:
+            self._toast(
+                t(self.lang, "session_not_found", id=session_id),
+                severity="warning",
+            )
+            return False
+        self.current_session_id = session_id
+        await self._render_history(self.store.load_messages(session_id))
+        self._toast(t(self.lang, "session_loaded", id=session_id))
+        return True
+
+    async def _delete_session(self, session_id: int) -> None:
+        """Ask for confirmation, then remove a stored session."""
+        session = self.store.get_session(session_id)
+        if session is None:
+            self._toast(
+                t(self.lang, "session_not_found", id=session_id),
+                severity="warning",
+            )
+            return
+        question = t(
+            self.lang,
+            "confirm_delete_question",
+            id=session.id,
+            title=session.title,
+        )
+
+        async def ask() -> bool:
+            return await self.push_screen_wait(
+                ConfirmScreen(question, self.lang, "confirm_delete_title")
+            )
+
+        if not await self.run_worker(ask()).wait():
+            return
+        self.store.delete_session(session_id)
+        if self.current_session_id == session_id:
+            await self.action_clear()
+        self._toast(t(self.lang, "session_deleted", id=session_id))
+        if self._sidebar_mode == "sessions":
+            await self._open_sessions_sidebar()
+
+    @on(events.Key)
+    def close_sidebar_on_escape(self, event: events.Key) -> None:
+        """Close the sidebar with Escape."""
+        if event.key == "escape" and self._sidebar_mode:
+            event.stop()
+            self._close_sidebar()
+
+    @on(Button.Pressed, "#sidebar-close")
+    def close_sidebar_button(self) -> None:
+        """Close the sidebar with its button."""
+        self._close_sidebar()
+
+    @on(OptionList.OptionSelected, "#session-list")
+    async def select_session(self, event: OptionList.OptionSelected) -> None:
+        """Load the session chosen with the mouse or keyboard."""
+        if event.option_id:
+            await self._load_session(self._session_options[event.option_id])
+
+    @on(Button.Pressed, "#session-load")
+    async def load_session_button(self) -> None:
+        """Load the highlighted session."""
+        session_id = self._highlighted_session_id()
+        if session_id is None:
+            self._toast(t(self.lang, "session_none_selected"), severity="warning")
+            return
+        await self._load_session(session_id)
+
+    @on(Button.Pressed, "#session-delete")
+    async def delete_session_button(self) -> None:
+        """Delete the highlighted session after confirmation."""
+        session_id = self._highlighted_session_id()
+        if session_id is None:
+            self._toast(t(self.lang, "session_none_selected"), severity="warning")
+            return
+        await self._delete_session(session_id)
 
     @on(PromptInput.Submitted, "#prompt")
     async def handle_submit(self, event: PromptInput.Submitted) -> None:
@@ -411,46 +622,14 @@ class DaneelApp(App[None]):
                     severity="warning",
                 )
         elif name == "sessions":
-            sessions = self.store.list_sessions(limit=9)
-            if not sessions:
-                self._toast(t(self.lang, "sessions_empty"))
-            else:
-                lines = [t(self.lang, "sessions_header")]
-                for session in sessions[:8]:
-                    lines.append(
-                        t(
-                            self.lang,
-                            "session_line",
-                            id=session.id,
-                            title=session.title,
-                            count=session.message_count,
-                            date=session.updated_at[:16].replace("T", " "),
-                        )
-                    )
-                if len(sessions) > 8:
-                    lines.append(
-                        t(self.lang, "sessions_more", count=len(sessions) - 8)
-                    )
-                self._toast("\n".join(lines))
+            await self._open_sessions_sidebar()
         elif name == "load":
             try:
                 session_id = int(argument)
             except ValueError:
                 self._toast(t(self.lang, "usage_load"), severity="warning")
             else:
-                if self.store.get_session(session_id) is None:
-                    self._toast(
-                        t(self.lang, "session_not_found", id=session_id),
-                        severity="warning",
-                    )
-                else:
-                    self.current_session_id = session_id
-                    await self._render_history(
-                        self.store.load_messages(session_id)
-                    )
-                    self._toast(
-                        t(self.lang, "session_loaded", id=session_id)
-                    )
+                await self._load_session(session_id)
         elif name == "new":
             await self.action_clear()
             self.current_session_id = None
@@ -472,7 +651,7 @@ class DaneelApp(App[None]):
         elif name == "clear":
             await self.action_clear()
         elif name == "help":
-            self._toast(t(self.lang, "help_text"))
+            await self._open_help_sidebar()
         else:
             self._toast(
                 t(self.lang, "unknown_command", command=name), severity="warning"
@@ -542,6 +721,6 @@ class DaneelApp(App[None]):
         self.current_session_id = None
         log = self.query_one("#log", VerticalScroll)
         for child in list(log.children):
-            child.remove()
+            await child.remove()
         self._welcome = Static(t(self.lang, "welcome"), classes="message")
         await log.mount(self._welcome)
