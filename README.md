@@ -67,6 +67,7 @@ Settings are read from environment variables; CLI flags take precedence.
 | `DANEEL_LANG` | Interface language (`en`/`ru`) | `en` |
 | `DANEEL_REPLY` | Reply mode (`auto`/`en`/`ru`) | `auto` |
 | `DANEEL_THEME` | Textual theme name | `daneel` |
+| `DANEEL_SESSION_DB` | Path to the session SQLite database | platform-specific user data dir |
 
 `DANEEL_WORKSPACE` is the safety boundary for tools that will read or change files. Since the agent can be started from anywhere, do not rely on the current directory for operations.
 
@@ -112,19 +113,30 @@ Right-click text selected in the chat log to copy just that fragment. Right-clic
 
 Copying uses the terminal clipboard protocol (OSC52), which works in most terminals but not in all of them.
 
+## 💾 Session history
+
+Every completed exchange is saved automatically to a local SQLite database, so the context survives `Ctrl+C`.
+
+* `/sessions` — list recent sessions with ids, titles and message counts.
+* `/load <id>` — restore a session and rebuild the chat log.
+* `/new` — start a fresh session.
+
+The database path comes from `DANEEL_SESSION_DB` or the platform-specific user data directory (`platformdirs`). The file is created automatically. Sessions keep the full message history, including tool calls, but only user and agent text is rendered in the chat.
+
 ## 🧩 Code layout
 
 * `daneel/core.py` — core logic: streaming `/api/chat`, conversation history, the tool-call loop, and error handling.
 * `daneel/clipboard.py` — system clipboard reads with an in-app fallback.
 * `daneel/config.py` — environment-based settings with CLI overrides.
 * `daneel/i18n.py` — interface strings, language resolution, and system prompt assembly.
+* `daneel/storage.py` — SQLite session store; the only module that knows about the database.
 * `daneel/theme.py` — custom Daneel themes, theme resolution, and registration.
 * `daneel/cli.py` — plain-text confirmation prompt with injected input/output.
 * `daneel/confirmation.py` — shared confirmation wiring and argument rendering used by both interfaces.
 * `daneel/tools/` — tool contracts and registry; the extension point for agent operations. No tools are enabled by default, and confirmation is mandatory.
 * `daneel/tui.py` — thin Textual layer: chat log, input field, localized messages.
 * `main.py` — entry point; `--cli` selects the plain-text mode.
-* `tests/` — core, config, i18n, theme, tools, and TUI tests with a mock HTTP transport.
+* `tests/` — core, config, i18n, theme, tools, storage, and TUI tests with a mock HTTP transport.
 
 The agent logic is separated from the interface, so another UI or additional workers can be added without rewriting the core. Run the tests with:
 

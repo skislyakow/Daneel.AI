@@ -7,6 +7,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from platformdirs import user_data_dir
+
 from .i18n import (
     ReplyLanguage,
     UILanguage,
@@ -17,6 +19,12 @@ from .theme import DEFAULT_THEME, resolve_theme
 
 DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "qwen2.5:1.5b"
+DB_FILENAME = "sessions.sqlite3"
+
+
+def default_db_path() -> Path:
+    """Return the platform-specific location of the session database."""
+    return Path(user_data_dir("daneel", appauthor="Daneel.AI")) / DB_FILENAME
 
 
 @dataclass(slots=True)
@@ -29,6 +37,7 @@ class Settings:
     ui_language: UILanguage = "en"
     reply_language: ReplyLanguage = "auto"
     theme: str = DEFAULT_THEME
+    session_db: Path = field(default_factory=default_db_path)
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Settings:
@@ -41,6 +50,9 @@ class Settings:
             ui_language=resolve_ui_language(None, env.get("DANEEL_LANG")),
             reply_language=resolve_reply_language(env.get("DANEEL_REPLY")),
             theme=resolve_theme(None, env.get("DANEEL_THEME")),
+            session_db=Path(
+                env.get("DANEEL_SESSION_DB", str(default_db_path()))
+            ).expanduser(),
         )
 
     def with_overrides(
@@ -57,4 +69,5 @@ class Settings:
             ui_language=ui_language or self.ui_language,
             reply_language=reply_language or self.reply_language,
             theme=resolve_theme(theme, self.theme) if theme else self.theme,
+            session_db=self.session_db,
         )

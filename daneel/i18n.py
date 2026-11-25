@@ -65,13 +65,21 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
         "nothing_to_copy": "Nothing to copy.",
         "help_text": (
             "Commands: /lang en|ru, /reply auto|en|ru, /theme <name>, "
-            "/clear, /copy [last], /help"
+            "/sessions, /load <id>, /new, /clear, /copy [last], /help"
         ),
         "lang_changed": "Interface language: {language}",
         "reply_changed": "Agent replies: {language}",
         "theme_changed": "Theme: {theme}",
         "theme_list": "Themes: {themes}",
         "theme_unknown": "Unknown theme: {theme}",
+        "sessions_empty": "No saved sessions.",
+        "sessions_header": "Sessions:",
+        "session_line": "#{id} {title} — {count} msgs, {date}",
+        "sessions_more": "…and {count} more",
+        "session_loaded": "Loaded session #{id}.",
+        "session_not_found": "Session #{id} not found.",
+        "session_new": "New session started.",
+        "usage_load": "Usage: /load <id>",
         "language_en": "English",
         "language_ru": "Russian",
         "reply_auto": "same as your message",
@@ -124,13 +132,21 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
         "nothing_to_copy": "Нечего копировать.",
         "help_text": (
             "Команды: /lang en|ru, /reply auto|en|ru, /theme <имя>, "
-            "/clear, /copy [last], /help"
+            "/sessions, /load <id>, /new, /clear, /copy [last], /help"
         ),
         "lang_changed": "Язык интерфейса: {language}",
         "reply_changed": "Язык ответов агента: {language}",
         "theme_changed": "Тема: {theme}",
         "theme_list": "Темы: {themes}",
         "theme_unknown": "Неизвестная тема: {theme}",
+        "sessions_empty": "Сохранённых сессий нет.",
+        "sessions_header": "Сессии:",
+        "session_line": "#{id} {title} — {count} сообщ., {date}",
+        "sessions_more": "…и ещё {count}",
+        "session_loaded": "Загружена сессия #{id}.",
+        "session_not_found": "Сессия #{id} не найдена.",
+        "session_new": "Начата новая сессия.",
+        "usage_load": "Использование: /load <id>",
         "language_en": "английский",
         "language_ru": "русский",
         "reply_auto": "как в вашем сообщении",

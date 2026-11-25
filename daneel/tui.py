@@ -16,8 +16,9 @@ from textual.widgets import Button, Header, Static, TextArea
 
 from .clipboard import read_text
 from .confirmation import install_confirmation, render_arguments
-from .core import Conversation, OllamaError
+from .core import Conversation, Message as ChatMessage, OllamaError
 from .i18n import ReplyLanguage, UILanguage, build_system_prompt, t
+from .storage import SessionStore
 from .theme import available_themes, register_themes
 from .tools import Arguments
 
@@ -227,12 +228,15 @@ class DaneelApp(App[None]):
         ui_language: UILanguage = "en",
         reply_language: ReplyLanguage = "auto",
         theme_name: str = "daneel",
+        store: SessionStore | None = None,
     ) -> None:
         super().__init__()
         self.conversation = conversation
         self.lang = ui_language
         self.reply_language = reply_language
         self.theme_name = theme_name
+        self.store = store or SessionStore(":memory:")
+        self.current_session_id: int | None = None
         self._busy = False
         self._welcome: Static | None = None
         self._hints: Static | None = None
@@ -259,6 +263,10 @@ class DaneelApp(App[None]):
         self._apply_language()
         install_confirmation(self.conversation, self.confirm_tool_call)
         self.query_one("#prompt", PromptInput).focus()
+
+    def on_unmount(self) -> None:
+        """Close the session database when the app exits."""
+        self.store.close()
 
     async def confirm_tool_call(self, name: str, arguments: Arguments) -> bool:
         """Ask the user in a modal whether the tool call may run."""
@@ -324,6 +332,32 @@ class DaneelApp(App[None]):
             severity=severity,
         )
 
+    async def _render_history(self, messages: list[ChatMessage]) -> None:
+        """Rebuild the visible chat log from stored messages."""
+        self.conversation.messages = list(messages)
+        self._transcript = []
+        self._last_answer = None
+
+        log = self.query_one("#log", VerticalScroll)
+        for child in list(log.children):
+            child.remove()
+        self._welcome = Static(t(self.lang, "welcome"), classes="message")
+        await log.mount(self._welcome)
+
+        for message in messages:
+            if message.role == "user":
+                await log.mount(
+                    Static(escape(message.content), classes="message user")
+                )
+                self._transcript.append(message.content)
+            elif message.role == "assistant" and message.content:
+                await log.mount(
+                    Static(escape(message.content), classes="message assistant")
+                )
+                self._transcript.append(message.content)
+                self._last_answer = message.content
+        log.scroll_end(animate=False)
+
     @on(PromptInput.Submitted, "#prompt")
     async def handle_submit(self, event: PromptInput.Submitted) -> None:
         """Handle either a local command or a message for the agent."""
@@ -376,6 +410,51 @@ class DaneelApp(App[None]):
                     t(self.lang, "theme_unknown", theme=argument),
                     severity="warning",
                 )
+        elif name == "sessions":
+            sessions = self.store.list_sessions(limit=9)
+            if not sessions:
+                self._toast(t(self.lang, "sessions_empty"))
+            else:
+                lines = [t(self.lang, "sessions_header")]
+                for session in sessions[:8]:
+                    lines.append(
+                        t(
+                            self.lang,
+                            "session_line",
+                            id=session.id,
+                            title=session.title,
+                            count=session.message_count,
+                            date=session.updated_at[:16].replace("T", " "),
+                        )
+                    )
+                if len(sessions) > 8:
+                    lines.append(
+                        t(self.lang, "sessions_more", count=len(sessions) - 8)
+                    )
+                self._toast("\n".join(lines))
+        elif name == "load":
+            try:
+                session_id = int(argument)
+            except ValueError:
+                self._toast(t(self.lang, "usage_load"), severity="warning")
+            else:
+                if self.store.get_session(session_id) is None:
+                    self._toast(
+                        t(self.lang, "session_not_found", id=session_id),
+                        severity="warning",
+                    )
+                else:
+                    self.current_session_id = session_id
+                    await self._render_history(
+                        self.store.load_messages(session_id)
+                    )
+                    self._toast(
+                        t(self.lang, "session_loaded", id=session_id)
+                    )
+        elif name == "new":
+            await self.action_clear()
+            self.current_session_id = None
+            self._toast(t(self.lang, "session_new"))
         elif name == "copy":
             if argument not in ("", "last"):
                 self._toast(t(self.lang, "usage_copy"), severity="warning")
@@ -406,6 +485,7 @@ class DaneelApp(App[None]):
         self._busy = True
         prompt.disabled = True
         self.sub_title = t(self.lang, "thinking")
+        start_len = len(self.conversation.messages)
 
         await log.mount(Static(escape(text), classes="message user"))
         self._transcript.append(text)
@@ -428,6 +508,16 @@ class DaneelApp(App[None]):
         else:
             self._transcript.append(received)
             self._last_answer = received
+            if self.current_session_id is None:
+                self.current_session_id = self.store.create_session(
+                    text.replace("\n", " ")[:40],
+                    model=self.conversation.client.model,
+                    reply_mode=self.reply_language,
+                )
+            self.store.append_messages(
+                self.current_session_id,
+                self.conversation.messages[start_len:],
+            )
         finally:
             self._busy = False
             prompt.disabled = False
@@ -449,6 +539,7 @@ class DaneelApp(App[None]):
         self.conversation.clear()
         self._transcript.clear()
         self._last_answer = None
+        self.current_session_id = None
         log = self.query_one("#log", VerticalScroll)
         for child in list(log.children):
             child.remove()
