@@ -5,10 +5,10 @@ from typing import Any
 import httpx
 import pyperclip
 import pytest
-from textual.widgets import Static
+from textual.widgets import OptionList, Static
 
 from daneel import clipboard
-from daneel.core import Conversation, OllamaClient
+from daneel.core import Conversation, Message, OllamaClient
 from daneel.i18n import STRINGS, build_system_prompt
 from daneel.tools import FunctionTool, ToolRegistry
 from daneel.tui import DaneelApp, PromptInput
@@ -347,20 +347,29 @@ async def test_copy_last_uses_the_most_recent_answer() -> None:
 
 
 @pytest.mark.parametrize("language", ["en", "ru"])
-async def test_help_lists_copy_command(
-    language: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_help_opens_sidebar(language: str) -> None:
     http = mock_http()
     app = DaneelApp(
         Conversation(OllamaClient(client=http)), ui_language=language
     )
-    notified = capture_notifications(monkeypatch, app)
 
     async with app.run_test() as pilot:
         await pilot.press(*"/help")
         await pilot.press("enter")
+        await pilot.pause()
 
-        assert "/copy" in notified[0]
+        sidebar = app.query_one("#sidebar")
+        assert sidebar.styles.display == "block"
+        body = [
+            child
+            for child in sidebar.children
+            if getattr(child, "id", None) != "sidebar-title"
+        ][0]
+        assert "/copy" in str(body.content)
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert sidebar.styles.display == "none"
 
     await http.aclose()
 
@@ -479,6 +488,103 @@ async def test_right_click_without_selection_does_not_copy(
 
 def test_notifications_expire_quickly() -> None:
     assert DaneelApp.NOTIFICATION_TIMEOUT == 2.0
+
+
+async def test_exchange_is_saved_to_current_session() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"привет")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        sessions = app.store.list_sessions()
+        assert len(sessions) == 1
+        assert [
+            (message.role, message.content)
+            for message in app.store.load_messages(sessions[0].id)
+        ] == [("user", "привет"), ("assistant", "Привет!")]
+
+    await http.aclose()
+
+
+async def test_sessions_sidebar_loads_selected_session() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+    old_id = app.store.create_session("Old chat")
+    app.store.append_messages(
+        old_id, [Message("user", "old question"), Message("assistant", "old answer")]
+    )
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/sessions")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        option_list = app.query_one("#session-list", OptionList)
+        assert "Old chat" in str(option_list.get_option_at_index(0).prompt)
+        option_list.focus()
+        option_list.highlighted = 0
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.current_session_id == old_id
+        assert [
+            (message.role, message.content)
+            for message in app.conversation.messages
+        ] == [("user", "old question"), ("assistant", "old answer")]
+        app.screen.text_select_all()
+        assert "old question" in (app.screen.get_selected_text() or "")
+
+    await http.aclose()
+
+
+async def test_sessions_sidebar_deletes_session_with_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+    notified = capture_notifications(monkeypatch, app)
+    old_id = app.store.create_session("Old chat")
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/sessions")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        option_list = app.query_one("#session-list", OptionList)
+        delete_task = asyncio.create_task(app._delete_session(old_id))
+        await asyncio.sleep(0.2)
+        await pilot.press("enter")
+        await delete_task
+        await pilot.pause()
+
+        assert app.store.get_session(old_id) is None
+        assert f"Session #{old_id} deleted." in notified
+
+    await http.aclose()
+
+
+async def test_new_command_starts_fresh_session() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"привет")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+        assert app.current_session_id is not None
+
+        await pilot.press(*"/new")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.current_session_id is None
+        assert app.conversation.messages == []
+
+    await http.aclose()
 
 
 async def test_tui_theme_command() -> None:

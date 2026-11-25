@@ -18,6 +18,7 @@ from daneel.i18n import (
     resolve_ui_language,
     t,
 )
+from daneel.storage import SessionStore
 from daneel.tui import DaneelApp
 
 # Windows consoles may use cp1251, which cannot encode emoji.
@@ -88,18 +89,23 @@ def main() -> None:
         settings = settings.with_overrides(theme=args.theme)
 
     conversation = Conversation(OllamaClient.from_settings(settings))
+    store = SessionStore(settings.session_db)
 
     if args.cli:
         install_confirmation(
             conversation, cli_confirmation(settings.ui_language)
         )
-        asyncio.run(run_cli(settings.ui_language, conversation))
+        try:
+            asyncio.run(run_cli(settings.ui_language, conversation))
+        finally:
+            store.close()
     else:
         DaneelApp(
             conversation,
             ui_language=settings.ui_language,
             reply_language=settings.reply_language,
             theme_name=settings.theme,
+            store=store,
         ).run()
 
 
