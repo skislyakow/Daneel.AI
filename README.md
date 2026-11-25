@@ -35,7 +35,7 @@ Build a minimal working protocol between the user, the agent, and a local LLM, w
    uv run daneel --cli
    ```
 
-In the TUI: type into the multiline input (it grows with the content), **Enter** sends the whole message, **Shift+Enter** inserts a newline. **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. The localized hint bar at the bottom shows both variants. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/sessions`, `/load <id>`, `/new`, `/clear`, `/help`. `/help` and `/sessions` open a right-hand sidebar; close it with **Escape** or the Close button.
+In the TUI: type into the multiline input (it grows with the content), **Enter** sends the whole message, **Shift+Enter** inserts a newline. **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. The localized hint bar at the bottom shows both variants. Typing `/` opens a popup with all commands; it filters as you type. Use **Up/Down** to navigate, **Enter** to insert the highlighted command, then **Enter** again to run it; a mouse click also inserts the command, and **Escape** hides the popup. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/sessions`, `/load <id>`, `/new`, `/clear`, `/help`. `/help` and `/sessions` open a right-hand sidebar; close it with **Escape** or the Close button.
 
 ## 🌍 Run from anywhere
 

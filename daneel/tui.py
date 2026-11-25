@@ -16,6 +16,7 @@ from textual.widgets import Button, Header, OptionList, Static, TextArea
 from textual.widgets._option_list import Option
 
 from .clipboard import read_text
+from .commands import COMMANDS, Command, matching_commands
 from .confirmation import install_confirmation, render_arguments
 from .core import Conversation, Message as ChatMessage, OllamaError
 from .i18n import ReplyLanguage, UILanguage, build_system_prompt, t
@@ -59,12 +60,26 @@ class PromptInput(TextArea):
         self.styles.height = min(self.MAX_HEIGHT, max(self.MIN_HEIGHT, lines + 2))
 
     @on(events.Key)
-    def submit_on_enter(self, event: events.Key) -> None:
-        """Submit on Enter; leave Shift+Enter alone so it inserts a newline."""
+    def handle_keys(self, event: events.Key) -> None:
+        """Navigate suggestions, or submit the input when no suggestion is active."""
+        app = self.app
+        if event.key in ("up", "down") and getattr(app, "has_suggestions", False):
+            event.stop()
+            event.prevent_default()
+            app.move_suggestion(1 if event.key == "down" else -1)
+            return
+        if event.key == "escape" and getattr(app, "has_suggestions", False):
+            event.stop()
+            event.prevent_default()
+            app.hide_suggestions()
+            return
         if event.key != "enter":
             return
         event.stop()
         event.prevent_default()
+        accept = getattr(app, "accept_suggestion", None)
+        if callable(accept) and accept():
+            return
         self.post_message(self.Submitted(self, self.text))
 
     @on(MouseDown)
@@ -212,6 +227,14 @@ class DaneelApp(App[None]):
         border-left: heavy $primary;
         background-tint: transparent;
     }
+    #suggestions {
+        display: none;
+        height: auto;
+        max-height: 8;
+        margin: 0 2;
+        background: $panel;
+        border: round $primary;
+    }
     #hints {
         height: 3;
         margin: 1 2 1 2;
@@ -276,6 +299,7 @@ class DaneelApp(App[None]):
         self._last_answer: str | None = None
         self._sidebar_mode: str | None = None
         self._session_options: dict[str, int] = {}
+        self._suggestions: list[Command] = []
 
     def compose(self) -> ComposeResult:
         """Build the initial widget tree."""
@@ -284,6 +308,7 @@ class DaneelApp(App[None]):
             self._welcome = Static(t(self.lang, "welcome"), classes="message")
             yield self._welcome
         with Vertical(id="composer"):
+            yield OptionList(id="suggestions")
             yield PromptInput(
                 placeholder=t(self.lang, "prompt_placeholder"), id="prompt"
             )
@@ -330,6 +355,10 @@ class DaneelApp(App[None]):
         self.query_one("#prompt", PromptInput).placeholder = t(
             self.lang, "prompt_placeholder"
         )
+        if self._suggestions:
+            self._update_suggestions(
+                self.query_one("#prompt", PromptInput).text
+            )
         self.sub_title = t(self.lang, "thinking") if self._busy else ""
 
         clear = t(self.lang, "clear_binding")
@@ -394,6 +423,80 @@ class DaneelApp(App[None]):
                 self._last_answer = message.content
         log.scroll_end(animate=False)
 
+    @property
+    def has_suggestions(self) -> bool:
+        """Whether the command popup is currently active."""
+        return bool(self._suggestions)
+
+    def _suggestion_list(self) -> OptionList:
+        return self.query_one("#suggestions", OptionList)
+
+    def _hide_suggestions(self) -> None:
+        if not self._suggestions:
+            return
+        self._suggestions = []
+        option_list = self._suggestion_list()
+        option_list.styles.display = "none"
+        option_list.clear_options()
+
+    def hide_suggestions(self) -> None:
+        """Public wrapper used by the input widget."""
+        self._hide_suggestions()
+
+    def _update_suggestions(self, text: str) -> None:
+        """Filter and show slash commands while the user types their name."""
+        if not text.startswith("/") or " " in text:
+            self._hide_suggestions()
+            return
+        matches = matching_commands(text)
+        if not matches:
+            self._hide_suggestions()
+            return
+        self._suggestions = matches
+        option_list = self._suggestion_list()
+        option_list.set_options(
+            [
+                Option(
+                    f"{command.usage} — {t(self.lang, command.description_key)}",
+                    id=f"cmd-{command.name}",
+                )
+                for command in matches
+            ]
+        )
+        option_list.highlighted = 0
+        option_list.styles.display = "block"
+
+    def move_suggestion(self, delta: int) -> None:
+        """Move the highlighted command, wrapping around."""
+        if not self._suggestions:
+            return
+        option_list = self._suggestion_list()
+        count = len(self._suggestions)
+        current = option_list.highlighted or 0
+        option_list.highlighted = (current + delta) % count
+
+    def accept_suggestion(self) -> bool:
+        """Insert the highlighted command into the input and hide the popup."""
+        if not self._suggestions:
+            return False
+        option_list = self._suggestion_list()
+        command = self._suggestions[option_list.highlighted or 0]
+        prompt = self.query_one("#prompt", PromptInput)
+        prompt.clear()
+        prompt.insert(command.insert_text)
+        self._hide_suggestions()
+        return True
+
+    @on(TextArea.Changed, "#prompt")
+    def prompt_changed(self, event: TextArea.Changed) -> None:
+        """Keep the popup in sync with the input."""
+        self._update_suggestions(self.query_one("#prompt", PromptInput).text)
+
+    @on(OptionList.OptionSelected, "#suggestions")
+    def suggestion_selected(self, event: OptionList.OptionSelected) -> None:
+        """Accept a command picked with the mouse."""
+        self.accept_suggestion()
+
     def _sidebar_container(self) -> Vertical:
         return self.query_one("#sidebar", Vertical)
 
@@ -404,23 +507,16 @@ class DaneelApp(App[None]):
 
     async def _open_help_sidebar(self) -> None:
         """Show command descriptions in the right-hand panel."""
-        keys = (
-            "help_lang",
-            "help_reply",
-            "help_theme",
-            "help_sessions",
-            "help_load_desc",
-            "help_new",
-            "help_clear",
-            "help_copy",
-            "help_help",
-        )
         await self._clear_sidebar()
         sidebar = self._sidebar_container()
         await sidebar.mount(
             Static(t(self.lang, "sidebar_help_title"), id="sidebar-title")
         )
-        await sidebar.mount(Static("\n".join(t(self.lang, key) for key in keys)))
+        lines = [
+            t(self.lang, command.description_key)
+            for command in COMMANDS
+        ]
+        await sidebar.mount(Static("\n".join(lines)))
         sidebar.styles.display = "block"
         self._sidebar_mode = "help"
 

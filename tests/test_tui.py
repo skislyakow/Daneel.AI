@@ -8,6 +8,7 @@ import pytest
 from textual.widgets import OptionList, Static
 
 from daneel import clipboard
+from daneel.commands import COMMANDS
 from daneel.core import Conversation, Message, OllamaClient
 from daneel.i18n import STRINGS, build_system_prompt
 from daneel.tools import FunctionTool, ToolRegistry
@@ -292,6 +293,7 @@ async def test_copy_command_copies_visible_transcript(
         await pilot.pause()
         await pilot.press(*"/copy")
         await pilot.press("enter")
+        await pilot.press("enter")
 
         assert "привет" in app.clipboard
         assert "Привет!" in app.clipboard
@@ -356,6 +358,7 @@ async def test_help_opens_sidebar(language: str) -> None:
     async with app.run_test() as pilot:
         await pilot.press(*"/help")
         await pilot.press("enter")
+        await pilot.press("enter")
         await pilot.pause()
 
         sidebar = app.query_one("#sidebar")
@@ -384,6 +387,7 @@ async def test_copy_command_with_empty_chat_reports_note(
     async with app.run_test() as pilot:
         await pilot.press(*"/copy")
         await pilot.press("enter")
+        await pilot.press("enter")
 
         assert app.clipboard == ""
         assert STRINGS["en"]["nothing_to_copy"] in notified
@@ -402,6 +406,7 @@ async def test_copy_command_reports_note_in_russian(
 
     async with app.run_test() as pilot:
         await pilot.press(*"/copy")
+        await pilot.press("enter")
         await pilot.press("enter")
 
         assert STRINGS["ru"]["nothing_to_copy"] in notified
@@ -423,6 +428,7 @@ async def test_clear_resets_the_copy_transcript(
         await pilot.press("ctrl+l")
         await pilot.pause()
         await pilot.press(*"/copy")
+        await pilot.press("enter")
         await pilot.press("enter")
 
         assert app.clipboard == ""
@@ -520,6 +526,7 @@ async def test_sessions_sidebar_loads_selected_session() -> None:
     async with app.run_test() as pilot:
         await pilot.press(*"/sessions")
         await pilot.press("enter")
+        await pilot.press("enter")
         await pilot.pause()
 
         option_list = app.query_one("#session-list", OptionList)
@@ -552,6 +559,7 @@ async def test_sessions_sidebar_deletes_session_with_confirmation(
     async with app.run_test() as pilot:
         await pilot.press(*"/sessions")
         await pilot.press("enter")
+        await pilot.press("enter")
         await pilot.pause()
 
         option_list = app.query_one("#session-list", OptionList)
@@ -579,10 +587,87 @@ async def test_new_command_starts_fresh_session() -> None:
 
         await pilot.press(*"/new")
         await pilot.press("enter")
+        await pilot.press("enter")
         await pilot.pause()
 
         assert app.current_session_id is None
         assert app.conversation.messages == []
+
+    await http.aclose()
+
+
+async def test_slash_shows_and_hides_command_suggestions() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/")
+        await pilot.pause()
+
+        popup = app.query_one("#suggestions", OptionList)
+        assert popup.styles.display == "block"
+        assert popup.option_count == len(COMMANDS)
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert popup.styles.display == "none"
+
+    await http.aclose()
+
+
+async def test_command_suggestions_filter_and_accept() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/c")
+        await pilot.pause()
+
+        popup = app.query_one("#suggestions", OptionList)
+        assert popup.option_count == 2
+        assert popup.highlighted == 0
+
+        await pilot.press("down")
+        await pilot.pause()
+        assert popup.highlighted == 1
+
+        await pilot.press("enter")
+        await pilot.pause()
+
+        prompt = app.query_one("#prompt", PromptInput)
+        assert prompt.text == "/copy "
+        assert popup.styles.display == "none"
+
+    await http.aclose()
+
+
+async def test_command_suggestion_click_accepts() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/s")
+        await pilot.pause()
+        await pilot.click("#suggestions", offset=(2, 1))
+        await pilot.pause()
+
+        assert app.query_one("#prompt", PromptInput).text == "/sessions "
+
+    await http.aclose()
+
+
+async def test_typing_space_hides_command_suggestions() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/lang")
+        await pilot.pause()
+        assert app.query_one("#suggestions", OptionList).styles.display == "block"
+
+        await pilot.press(" ")
+        await pilot.pause()
+        assert app.query_one("#suggestions", OptionList).styles.display == "none"
 
     await http.aclose()
 
