@@ -1,5 +1,6 @@
 import asyncio
 import json
+from typing import Any
 
 import httpx
 import pytest
@@ -20,6 +21,19 @@ def mock_http() -> httpx.AsyncClient:
         return httpx.Response(200, text=body + "\n")
 
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+def capture_notifications(monkeypatch: pytest.MonkeyPatch, app: DaneelApp) -> list[str]:
+    """Collect notification messages before they expire."""
+    messages: list[str] = []
+    original = app.notify
+
+    def notify(message: str, **kwargs: Any) -> None:
+        messages.append(str(message))
+        original(message, **kwargs)
+
+    monkeypatch.setattr(app, "notify", notify)
+    return messages
 
 
 async def test_tui_submits_prompt_and_stores_answer() -> None:
@@ -226,9 +240,12 @@ async def test_tui_confirmation_tab_then_enter_denies() -> None:
     await http.aclose()
 
 
-async def test_copy_command_copies_visible_transcript() -> None:
+async def test_copy_command_copies_visible_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     http = mock_http()
     app = DaneelApp(Conversation(OllamaClient(client=http)))
+    notified = capture_notifications(monkeypatch, app)
 
     async with app.run_test() as pilot:
         await pilot.press(*"привет")
@@ -244,8 +261,7 @@ async def test_copy_command_copies_visible_transcript() -> None:
         assert "Daneel: Привет!" in app.clipboard
         assert "Interface language: EN" in app.clipboard
         assert "running offline" not in app.clipboard
-        app.screen.text_select_all()
-        assert "Copied to clipboard." in app.screen.get_selected_text()
+        assert STRINGS["en"]["copied"] in notified
 
     await http.aclose()
 
@@ -311,40 +327,47 @@ async def test_help_lists_copy_command(language: str) -> None:
     await http.aclose()
 
 
-async def test_copy_command_with_empty_chat_reports_note() -> None:
+async def test_copy_command_with_empty_chat_reports_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     http = mock_http()
     app = DaneelApp(Conversation(OllamaClient(client=http)))
+    notified = capture_notifications(monkeypatch, app)
 
     async with app.run_test() as pilot:
         await pilot.press(*"/copy")
         await pilot.press("enter")
 
         assert app.clipboard == ""
-        app.screen.text_select_all()
-        assert "Nothing to copy." in app.screen.get_selected_text()
+        assert STRINGS["en"]["nothing_to_copy"] in notified
 
     await http.aclose()
 
 
-async def test_copy_command_reports_note_in_russian() -> None:
+async def test_copy_command_reports_note_in_russian(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     http = mock_http()
     app = DaneelApp(
         Conversation(OllamaClient(client=http)), ui_language="ru"
     )
+    notified = capture_notifications(monkeypatch, app)
 
     async with app.run_test() as pilot:
         await pilot.press(*"/copy")
         await pilot.press("enter")
-        app.screen.text_select_all()
 
-        assert "Нечего копировать." in app.screen.get_selected_text()
+        assert STRINGS["ru"]["nothing_to_copy"] in notified
 
     await http.aclose()
 
 
-async def test_clear_resets_the_copy_transcript() -> None:
+async def test_clear_resets_the_copy_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     http = mock_http()
     app = DaneelApp(Conversation(OllamaClient(client=http)))
+    notified = capture_notifications(monkeypatch, app)
 
     async with app.run_test() as pilot:
         await pilot.press(*"привет")
@@ -356,8 +379,7 @@ async def test_clear_resets_the_copy_transcript() -> None:
         await pilot.press("enter")
 
         assert app.clipboard == ""
-        app.screen.text_select_all()
-        assert "Nothing to copy." in app.screen.get_selected_text()
+        assert STRINGS["en"]["nothing_to_copy"] in notified
 
     await http.aclose()
 
@@ -365,6 +387,7 @@ async def test_clear_resets_the_copy_transcript() -> None:
 async def test_right_click_copies_selected_text(monkeypatch: pytest.MonkeyPatch) -> None:
     http = mock_http()
     app = DaneelApp(Conversation(OllamaClient(client=http)))
+    notified = capture_notifications(monkeypatch, app)
 
     async with app.run_test() as pilot:
         with monkeypatch.context() as patch:
@@ -372,8 +395,7 @@ async def test_right_click_copies_selected_text(monkeypatch: pytest.MonkeyPatch)
             await pilot.click("#log", button=3)
 
         assert app.clipboard == "selected text"
-        app.screen.text_select_all()
-        assert "Copied to clipboard." in app.screen.get_selected_text()
+        assert STRINGS["en"]["copied"] in notified
 
     await http.aclose()
 
@@ -404,6 +426,7 @@ async def test_right_click_without_selection_does_not_copy(
     app = DaneelApp(
         Conversation(OllamaClient(client=http)), ui_language="ru"
     )
+    notified = capture_notifications(monkeypatch, app)
 
     async with app.run_test() as pilot:
         with monkeypatch.context() as patch:
@@ -411,10 +434,13 @@ async def test_right_click_without_selection_does_not_copy(
             await pilot.click("#log", button=3)
 
         assert app.clipboard == ""
-        app.screen.text_select_all()
-        assert "Ничего не выделено." in app.screen.get_selected_text()
+        assert STRINGS["ru"]["nothing_selected"] in notified
 
     await http.aclose()
+
+
+def test_notifications_expire_quickly() -> None:
+    assert DaneelApp.NOTIFICATION_TIMEOUT == 2.0
 
 
 async def test_tui_theme_command() -> None:

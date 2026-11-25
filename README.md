@@ -108,7 +108,7 @@ A confirmation callback supplied by a caller always takes precedence over the in
 
 ## 📋 Copying chat
 
-Right-click text selected in the chat log to copy just that fragment. `/copy` copies the whole visible transcript (messages, errors, and system notes), while `/copy last` copies only the latest agent answer. Feedback is localized; if nothing is selected or the chat is empty, a note is shown instead. `/help` lists both commands.
+Right-click text selected in the chat log to copy just that fragment. `/copy` copies the whole visible transcript (messages, errors, and system notes), while `/copy last` copies only the latest agent answer. Feedback is localized and shown as a short notification in the top-right corner that disappears after two seconds; if nothing is selected or the chat is empty, a warning notification is shown instead. `/help` lists both commands.
 
 Copying uses the terminal clipboard protocol (OSC52), which works in most terminals but not in all of them.
 

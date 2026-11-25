@@ -9,6 +9,7 @@ from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.events import MouseDown
+from textual.notifications import SeverityLevel
 from textual.screen import ModalScreen
 from textual.widgets import Button, Header, Input, Static
 
@@ -97,6 +98,7 @@ class DaneelApp(App[None]):
     """Full-screen terminal chat with localized strings and local commands."""
 
     TITLE = "Daneel.AI"
+    NOTIFICATION_TIMEOUT = 2.0
     CSS = """
     Screen {
         background: $surface;
@@ -146,6 +148,12 @@ class DaneelApp(App[None]):
         content-align: left middle;
         color: $footer-description-foreground;
         background: $footer-background;
+    }
+    #textual-toastrack {
+        dock: top;
+        align: right top;
+        margin-top: 1;
+        margin-bottom: 0;
     }
     """
 
@@ -238,9 +246,17 @@ class DaneelApp(App[None]):
         selected = self.screen.get_selected_text()
         if selected:
             self.copy_to_clipboard(selected)
-            await self._note(t(self.lang, "copied"))
+            self._toast(t(self.lang, "copied"))
         else:
-            await self._note(t(self.lang, "nothing_selected"))
+            self._toast(t(self.lang, "nothing_selected"), severity="warning")
+
+    def _toast(self, text: str, severity: SeverityLevel = "information") -> None:
+        """Show a short-lived notification instead of a chat log line."""
+        self.notify(
+            text,
+            title=t(self.lang, "notification_title"),
+            severity=severity,
+        )
 
     async def _note(self, text: str) -> None:
         """Show a local system message in the chat log."""
@@ -307,16 +323,16 @@ class DaneelApp(App[None]):
             if argument not in ("", "last"):
                 await self._note(t(self.lang, "usage_copy"))
             elif not self._transcript:
-                await self._note(t(self.lang, "nothing_to_copy"))
+                self._toast(t(self.lang, "nothing_to_copy"), severity="warning")
             elif argument == "last":
                 if self._last_answer is None:
-                    await self._note(t(self.lang, "nothing_to_copy"))
+                    self._toast(t(self.lang, "nothing_to_copy"), severity="warning")
                 else:
                     self.copy_to_clipboard(self._last_answer)
-                    await self._note(t(self.lang, "copied"))
+                    self._toast(t(self.lang, "copied"))
             else:
                 self.copy_to_clipboard("\n".join(self._transcript))
-                await self._note(t(self.lang, "copied"))
+                self._toast(t(self.lang, "copied"))
         elif name == "clear":
             await self.action_clear()
         elif name == "help":
