@@ -20,6 +20,8 @@ from daneel.i18n import (
     t,
 )
 from daneel.storage import SessionStore
+from daneel.tools import ToolRegistry
+from daneel.tools.weather import create_weather_tool
 from daneel.tui import DaneelApp
 
 # Windows consoles may use cp1251, which cannot encode emoji.
@@ -107,7 +109,10 @@ def main() -> None:
     if remember:
         preferences.update(**remember)
 
-    conversation = Conversation(OllamaClient.from_settings(settings))
+    conversation = Conversation(
+        OllamaClient.from_settings(settings),
+        tools=ToolRegistry([create_weather_tool()]),
+    )
     store = SessionStore(settings.session_db)
 
     if args.cli:

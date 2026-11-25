@@ -102,12 +102,14 @@ The terminal font is controlled by your terminal emulator, not by the applicatio
 
 ## 🧰 Tool confirmation
 
-No tools are enabled by default. When the model requests a tool call, the active interface asks before running it:
+The only tool enabled by default is `get_weather`, which looks up a city and returns its daily forecast from the free Open-Meteo APIs (no API key). Other tools are opt-in. Every tool call still requires confirmation; the active interface asks before running it:
 
 * **CLI:** `Allow tool <name> with <arguments>? [Y/n]` — Enter (or `y`/`yes`/`да`) approves; `n`/`no`/`нет` denies. A denial is printed as a system message and the tool is not executed.
 * **TUI:** a modal dialog shows the tool name and arguments. Enter confirms the focused button (Allow by default), Tab switches to Deny, and Esc or `n` denies. Denials appear as a note in the chat log.
 
 A confirmation callback supplied by a caller always takes precedence over the interface default. The full design and its tickets live in `.scratch/tool-confirmation/`.
+
+For example, ask «какой прогноз погоды в Острогожске на завтра?» and approve the `get_weather` call — the agent will answer using the returned forecast. The tool accepts a city name (including Cyrillic) and returns labelled forecasts for today and tomorrow. Tool calling needs a model that supports it: `qwen3.5:4b` works reliably, while the tiny default `qwen2.5:1.5b` often ignores tools — set `DANEEL_MODEL=qwen3.5:4b` for weather questions.
 
 ## 📋 Copying chat
 
@@ -135,7 +137,7 @@ The database path comes from `DANEEL_SESSION_DB` or the platform-specific user d
 * `daneel/theme.py` — custom Daneel themes, theme resolution, and registration.
 * `daneel/cli.py` — plain-text confirmation prompt with injected input/output.
 * `daneel/confirmation.py` — shared confirmation wiring and argument rendering used by both interfaces.
-* `daneel/tools/` — tool contracts and registry; the extension point for agent operations. No tools are enabled by default, and confirmation is mandatory.
+* `daneel/tools/` — tool contracts and registry; the extension point for agent operations. `tools/weather.py` provides the enabled-by-default `get_weather` tool; confirmation is mandatory for every call.
 * `daneel/tui.py` — thin Textual layer: chat log, input field, localized messages.
 * `main.py` — entry point; `--cli` selects the plain-text mode.
 * `tests/` — core, config, i18n, theme, tools, storage, and TUI tests with a mock HTTP transport.
