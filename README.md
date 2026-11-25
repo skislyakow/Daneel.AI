@@ -35,7 +35,7 @@ Build a minimal working protocol between the user, the agent, and a local LLM, w
    uv run daneel --cli
    ```
 
-In the TUI: type into the multiline input (it grows with the content), **Enter** sends the whole message, **Shift+Enter** inserts a newline. **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. The localized hint bar at the bottom shows both variants. Typing `/` opens a popup with all commands; it filters as you type. Use **Up/Down** to navigate, **Enter** to insert the highlighted command, then **Enter** again to run it; a mouse click also inserts the command, and **Escape** hides the popup. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/sessions`, `/load <id>`, `/new`, `/clear`, `/help`. `/help` and `/sessions` open a right-hand sidebar; close it with **Escape** or the Close button.
+In the TUI: type into the multiline input (it grows with the content), **Enter** sends the whole message, **Shift+Enter** inserts a newline. **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. The localized hint bar at the bottom shows both variants. Typing `/` opens a command palette: the command name and a dimmed description are shown as two columns, filtered as you type. Use **Up/Down** to navigate and **Enter** (or a mouse click) to open the highlighted command's arguments; commands without arguments run immediately. In the argument palette, type a letter to filter the values, navigate with **Up/Down**, and press **Enter** to apply the value instantly — the input is cleared and the change takes effect without another command. **Escape** closes the palette. `/lang`, `/reply`, `/copy`, `/theme` (installed themes) and `/sessions` (saved sessions) use argument palettes; `/new` and `/clear` run right away. The command palette itself opens with `/`. Direct forms like `/lang ru` still work. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/sessions`, `/new`, `/clear`, `/copy [all|last]`.
 
 ## 🌍 Run from anywhere
 
@@ -109,7 +109,7 @@ A confirmation callback supplied by a caller always takes precedence over the in
 
 ## 📋 Copying chat
 
-Right-click text selected in the chat log to copy just that fragment. Right-click the input field to paste text at the cursor: the system clipboard is used when available, otherwise Daneel's own clipboard is used silently. On Linux, system clipboard access needs `xclip`/`xsel` (X11) or `wl-copy`/`wl-paste` (Wayland); headless and SSH sessions fall back to the in-app clipboard. `/copy` copies the whole visible transcript (messages, errors, and system notes), while `/copy last` copies only the latest agent answer. Feedback is localized and shown as a short notification in the top-right corner that disappears after two seconds; if nothing is selected or the chat is empty, a warning notification is shown instead. `/help` lists both commands.
+Right-click text selected in the chat log to copy just that fragment. Right-click the input field to paste text at the cursor: the system clipboard is used when available, otherwise Daneel's own clipboard is used silently. On Linux, system clipboard access needs `xclip`/`xsel` (X11) or `wl-copy`/`wl-paste` (Wayland); headless and SSH sessions fall back to the in-app clipboard. `/copy` copies the whole visible transcript (messages, errors, and system notes), while `/copy last` copies only the latest agent answer. Feedback is localized and shown as a short notification in the top-right corner that disappears after two seconds; if nothing is selected or the chat is empty, a warning notification is shown instead. Both commands are listed in the `/` palette.
 
 Copying uses the terminal clipboard protocol (OSC52), which works in most terminals but not in all of them.
 
@@ -117,10 +117,9 @@ Copying uses the terminal clipboard protocol (OSC52), which works in most termin
 
 Every completed exchange is saved automatically to a local SQLite database, so the context survives `Ctrl+C`.
 
-* `/sessions` — open a right-hand sidebar with recent sessions; click one or press Enter to load it.
-* `/load <id>` — textual variant of the same action.
+* `/sessions` — open the session palette; select a session with **Up/Down** and press **Enter** to load it, or type to filter.
 * `/new` — start a fresh session.
-* The sidebar also has a Delete button with a confirmation dialog. Close it with Escape or the Close button.
+* In the session palette, press **Delete** or click the **✕** icon at the right of a row to remove that session. A confirmation dialog is shown before deletion.
 
 The database path comes from `DANEEL_SESSION_DB` or the platform-specific user data directory (`platformdirs`). The file is created automatically. Sessions keep the full message history, including tool calls, but only user and agent text is rendered in the chat.
 

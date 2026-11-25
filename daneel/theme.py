@@ -20,7 +20,7 @@ DANEEL_DARK = Theme(
     surface="#171F27",
     panel="#1E2933",
     dark=True,
-    variables={"footer-background": "#1E2933"},
+    variables={"footer-background": "#1E2933", "menu-edge": "#3C5368"},
 )
 
 DANEEL_LIGHT = Theme(
@@ -36,7 +36,7 @@ DANEEL_LIGHT = Theme(
     surface="#E5EBF1",
     panel="#D8E0E8",
     dark=False,
-    variables={"footer-background": "#D8E0E8"},
+    variables={"footer-background": "#D8E0E8", "menu-edge": "#B6C7D6"},
 )
 
 CUSTOM_THEMES: dict[str, Theme] = {

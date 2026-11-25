@@ -36,5 +36,5 @@ def test_translation_substitutes_placeholders() -> None:
     assert t("en", "lang_changed", language="RU") == "Interface language: RU"
     assert (
         t("ru", "unknown_command", command="foo")
-        == "Неизвестная команда: foo. Введите /help для списка."
+        == "Неизвестная команда: foo. Введите / для списка."
     )

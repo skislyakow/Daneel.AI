@@ -5,12 +5,14 @@ from typing import Any
 import httpx
 import pyperclip
 import pytest
+from rich.text import Text
 from textual.widgets import OptionList, Static
 
 from daneel import clipboard
 from daneel.commands import COMMANDS
 from daneel.core import Conversation, Message, OllamaClient
 from daneel.i18n import STRINGS, build_system_prompt
+from daneel.theme import available_themes
 from daneel.tools import FunctionTool, ToolRegistry
 from daneel.tui import DaneelApp, PromptInput
 
@@ -349,30 +351,31 @@ async def test_copy_last_uses_the_most_recent_answer() -> None:
 
 
 @pytest.mark.parametrize("language", ["en", "ru"])
-async def test_help_opens_sidebar(language: str) -> None:
+async def test_slash_palette_lists_commands_without_help(language: str) -> None:
     http = mock_http()
     app = DaneelApp(
         Conversation(OllamaClient(client=http)), ui_language=language
     )
 
     async with app.run_test() as pilot:
-        await pilot.press(*"/help")
-        await pilot.press("enter")
-        await pilot.press("enter")
+        await pilot.press(*"/")
         await pilot.pause()
 
-        sidebar = app.query_one("#sidebar")
-        assert sidebar.styles.display == "block"
-        body = [
-            child
-            for child in sidebar.children
-            if getattr(child, "id", None) != "sidebar-title"
-        ][0]
-        assert "/copy" in str(body.content)
+        popup = app.query_one("#suggestions", OptionList)
+        assert popup.styles.display == "block"
+        assert popup.option_count == len(COMMANDS)
+        assert any(
+            "/copy" in popup.get_option_at_index(index).prompt.plain
+            for index in range(popup.option_count)
+        )
+        assert all(
+            "/help" not in popup.get_option_at_index(index).prompt.plain
+            for index in range(popup.option_count)
+        )
 
         await pilot.press("escape")
         await pilot.pause()
-        assert sidebar.styles.display == "none"
+        assert popup.styles.display == "none"
 
     await http.aclose()
 
@@ -515,7 +518,7 @@ async def test_exchange_is_saved_to_current_session() -> None:
     await http.aclose()
 
 
-async def test_sessions_sidebar_loads_selected_session() -> None:
+async def test_sessions_palette_loads_selected_session() -> None:
     http = mock_http()
     app = DaneelApp(Conversation(OllamaClient(client=http)))
     old_id = app.store.create_session("Old chat")
@@ -526,14 +529,13 @@ async def test_sessions_sidebar_loads_selected_session() -> None:
     async with app.run_test() as pilot:
         await pilot.press(*"/sessions")
         await pilot.press("enter")
-        await pilot.press("enter")
         await pilot.pause()
 
-        option_list = app.query_one("#session-list", OptionList)
-        assert "Old chat" in str(option_list.get_option_at_index(0).prompt)
-        option_list.focus()
-        option_list.highlighted = 0
-        await pilot.pause()
+        popup = app.query_one("#suggestions", OptionList)
+        assert popup.styles.display == "block"
+        assert popup.option_count == 1
+        assert "Old chat" in popup.get_option_at_index(0).prompt.plain
+
         await pilot.press("enter")
         await pilot.pause()
 
@@ -548,7 +550,7 @@ async def test_sessions_sidebar_loads_selected_session() -> None:
     await http.aclose()
 
 
-async def test_sessions_sidebar_deletes_session_with_confirmation(
+async def test_session_delete_key_asks_confirmation_and_refreshes_palette(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     http = mock_http()
@@ -559,11 +561,12 @@ async def test_sessions_sidebar_deletes_session_with_confirmation(
     async with app.run_test() as pilot:
         await pilot.press(*"/sessions")
         await pilot.press("enter")
-        await pilot.press("enter")
         await pilot.pause()
 
-        option_list = app.query_one("#session-list", OptionList)
-        delete_task = asyncio.create_task(app._delete_session(old_id))
+        popup = app.query_one("#suggestions", OptionList)
+        assert popup.option_count == 1
+
+        delete_task = asyncio.create_task(pilot.press("delete"))
         await asyncio.sleep(0.2)
         await pilot.press("enter")
         await delete_task
@@ -571,6 +574,37 @@ async def test_sessions_sidebar_deletes_session_with_confirmation(
 
         assert app.store.get_session(old_id) is None
         assert f"Session #{old_id} deleted." in notified
+        assert popup.option_count == 0
+
+    await http.aclose()
+
+
+async def test_session_delete_icon_asks_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+    notified = capture_notifications(monkeypatch, app)
+    old_id = app.store.create_session("Old chat")
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/sessions")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        popup = app.query_one("#suggestions", OptionList)
+        icon_x = popup.get_option_at_index(0).prompt.plain.index("✕") + 2
+        delete_task = asyncio.create_task(
+            pilot.click("#suggestions", offset=(icon_x, 0))
+        )
+        await asyncio.sleep(0.2)
+        await pilot.press("enter")
+        await delete_task
+        await pilot.pause()
+
+        assert app.store.get_session(old_id) is None
+        assert f"Session #{old_id} deleted." in notified
+        assert app.current_session_id is None
 
     await http.aclose()
 
@@ -636,7 +670,8 @@ async def test_command_suggestions_filter_and_accept() -> None:
 
         prompt = app.query_one("#prompt", PromptInput)
         assert prompt.text == "/copy "
-        assert popup.styles.display == "none"
+        assert popup.styles.display == "block"
+        assert popup.option_count == 2
 
     await http.aclose()
 
@@ -646,12 +681,14 @@ async def test_command_suggestion_click_accepts() -> None:
     app = DaneelApp(Conversation(OllamaClient(client=http)))
 
     async with app.run_test() as pilot:
-        await pilot.press(*"/s")
+        await pilot.press(*"/lang")
+        await pilot.press("enter")
         await pilot.pause()
         await pilot.click("#suggestions", offset=(2, 1))
         await pilot.pause()
 
-        assert app.query_one("#prompt", PromptInput).text == "/sessions "
+        assert app.lang == "ru"
+        assert app.query_one("#prompt", PromptInput).text == ""
 
     await http.aclose()
 
@@ -778,5 +815,216 @@ async def test_right_click_in_input_with_empty_clipboard_is_noop(
 
         assert app.query_one("#prompt", PromptInput).text == ""
         assert notified == []
+
+    await http.aclose()
+
+
+async def test_suggestion_rows_have_two_columns_and_soft_side_bars() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/")
+        await pilot.pause()
+
+        popup = app.query_one("#suggestions", OptionList)
+        row = popup.get_option_at_index(0).prompt
+        assert isinstance(row, Text)
+        assert row.plain.startswith("/lang")
+        assert "switch interface language" in row.plain
+        assert any(
+            "dim" in str(span.style) for span in row.spans if span.style
+        )
+
+        assert popup.styles.border_top[0] in ("", "none")
+        assert popup.styles.border_left[0] == "vkey"
+        assert popup.styles.border_right[0] == "vkey"
+        hints = app.query_one("#hints", Static)
+        assert hints.styles.border_top[0] in ("", "none")
+        assert hints.styles.border_left[0] == "vkey"
+        assert hints.styles.border_right[0] == "vkey"
+
+    await http.aclose()
+
+
+async def test_lang_choices_apply_immediately(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+    notified = capture_notifications(monkeypatch, app)
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/lang")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        popup = app.query_one("#suggestions", OptionList)
+        prompt = app.query_one("#prompt", PromptInput)
+        assert popup.styles.display == "block"
+        assert popup.option_count == 2
+        assert prompt.text == "/lang "
+        assert popup.get_option_at_index(0).prompt.plain.startswith("en")
+
+        await pilot.press("down")
+        await pilot.pause()
+        assert popup.highlighted == 1
+
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.lang == "ru"
+        assert prompt.text == ""
+        assert popup.styles.display == "none"
+        assert "Язык интерфейса: RU" in notified
+
+    await http.aclose()
+
+
+async def test_lang_choices_filter_by_typed_letter() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/lang")
+        await pilot.press("enter")
+        await pilot.press("r")
+        await pilot.pause()
+
+        popup = app.query_one("#suggestions", OptionList)
+        assert popup.option_count == 1
+        assert popup.get_option_at_index(0).prompt.plain.startswith("ru")
+
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.lang == "ru"
+
+    await http.aclose()
+
+
+async def test_reply_choices_apply_immediately() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/reply")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        popup = app.query_one("#suggestions", OptionList)
+        assert popup.option_count == 3
+
+        await pilot.press(*"ru")
+        await pilot.pause()
+        assert popup.option_count == 1
+
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.reply_language == "ru"
+        assert app.conversation.client.system_prompt == build_system_prompt("ru")
+
+    await http.aclose()
+
+
+async def test_empty_choice_filter_hides_menu_and_backspace_restores_it() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/lang")
+        await pilot.press("enter")
+        await pilot.press(*"zz")
+        await pilot.pause()
+
+        popup = app.query_one("#suggestions", OptionList)
+        assert popup.styles.display == "none"
+
+        await pilot.press("backspace")
+        await pilot.press("backspace")
+        await pilot.pause()
+        assert popup.styles.display == "block"
+        assert popup.option_count == 2
+
+    await http.aclose()
+
+
+async def test_theme_choices_filter_and_apply() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/theme")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        popup = app.query_one("#suggestions", OptionList)
+        assert popup.option_count == len(available_themes())
+
+        await pilot.press(*"dra")
+        await pilot.pause()
+        assert popup.option_count == 1
+
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.current_theme.name == "dracula"
+
+    await http.aclose()
+
+
+@pytest.mark.parametrize("name", ["load", "help"])
+async def test_removed_commands_are_reported_as_unknown(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+    notified = capture_notifications(monkeypatch, app)
+
+    async with app.run_test() as pilot:
+        await pilot.press(*f"/{name} 1")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert STRINGS["en"]["unknown_command"].format(command=name) in notified
+
+    await http.aclose()
+
+
+async def test_argumentless_command_runs_from_menu() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"привет")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+        assert app.current_session_id is not None
+
+        await pilot.press(*"/new")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.current_session_id is None
+        assert app.conversation.messages == []
+        assert app.query_one("#prompt", PromptInput).text == ""
+
+    await http.aclose()
+
+
+async def test_escape_closes_choice_menu() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/lang")
+        await pilot.press("enter")
+        await pilot.pause()
+        popup = app.query_one("#suggestions", OptionList)
+        assert popup.styles.display == "block"
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert popup.styles.display == "none"
+        assert app.lang == "en"
 
     await http.aclose()

@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import cast
 
 from rich.markup import escape
+from rich.style import Style as RichStyle
+from rich.text import Text
 from textual import events, on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -16,7 +18,7 @@ from textual.widgets import Button, Header, OptionList, Static, TextArea
 from textual.widgets._option_list import Option
 
 from .clipboard import read_text
-from .commands import COMMANDS, Command, matching_commands
+from .commands import COMMANDS, Command, MenuEntry, command_named, matching_commands
 from .confirmation import install_confirmation, render_arguments
 from .core import Conversation, Message as ChatMessage, OllamaError
 from .i18n import ReplyLanguage, UILanguage, build_system_prompt, t
@@ -25,6 +27,7 @@ from .theme import available_themes, register_themes
 from .tools import Arguments
 
 RIGHT_BUTTON = 3
+DELETE_ICON = "✕"
 
 
 class PromptInput(TextArea):
@@ -60,8 +63,8 @@ class PromptInput(TextArea):
         self.styles.height = min(self.MAX_HEIGHT, max(self.MIN_HEIGHT, lines + 2))
 
     @on(events.Key)
-    def handle_keys(self, event: events.Key) -> None:
-        """Navigate suggestions, or submit the input when no suggestion is active."""
+    async def handle_keys(self, event: events.Key) -> None:
+        """Navigate the menu, or submit the input when no menu is active."""
         app = self.app
         if event.key in ("up", "down") and getattr(app, "has_suggestions", False):
             event.stop()
@@ -73,12 +76,19 @@ class PromptInput(TextArea):
             event.prevent_default()
             app.hide_suggestions()
             return
+        if event.key == "delete":
+            delete = getattr(app, "delete_highlighted_session", None)
+            if callable(delete):
+                event.stop()
+                event.prevent_default()
+                await delete()
+                return
         if event.key != "enter":
             return
         event.stop()
         event.prevent_default()
-        accept = getattr(app, "accept_suggestion", None)
-        if callable(accept) and accept():
+        activate = getattr(app, "activate_suggestion", None)
+        if callable(activate) and await activate():
             return
         self.post_message(self.Submitted(self, self.text))
 
@@ -233,13 +243,17 @@ class DaneelApp(App[None]):
         max-height: 8;
         margin: 0 2;
         background: $panel;
-        border: round $primary;
+        border: none;
+        border-left: vkey $menu-edge;
+        border-right: vkey $menu-edge;
     }
     #hints {
         height: 3;
         margin: 1 2 1 2;
         padding: 0 1;
-        border: round $primary;
+        border: none;
+        border-left: vkey $menu-edge;
+        border-right: vkey $menu-edge;
         content-align: left middle;
         color: $footer-description-foreground;
         background: $footer-background;
@@ -249,31 +263,6 @@ class DaneelApp(App[None]):
         align: right top;
         margin-top: 1;
         margin-bottom: 0;
-    }
-    #sidebar {
-        dock: right;
-        width: 44;
-        height: 1fr;
-        display: none;
-        padding: 1 1;
-        background: $panel;
-        border-left: vkey $primary;
-    }
-    #sidebar-title {
-        color: $primary;
-        text-style: bold;
-        margin-bottom: 1;
-    }
-    #session-list {
-        height: 1fr;
-        margin-bottom: 1;
-    }
-    #session-actions {
-        height: auto;
-    }
-    #session-actions Button {
-        width: 100%;
-        margin-bottom: 1;
     }
     """
 
@@ -297,9 +286,9 @@ class DaneelApp(App[None]):
         self._hints: Static | None = None
         self._transcript: list[str] = []
         self._last_answer: str | None = None
-        self._sidebar_mode: str | None = None
-        self._session_options: dict[str, int] = {}
         self._suggestions: list[Command] = []
+        self._choices: list[MenuEntry] = []
+        self._active_command: Command | None = None
 
     def compose(self) -> ComposeResult:
         """Build the initial widget tree."""
@@ -314,8 +303,11 @@ class DaneelApp(App[None]):
             )
             self._hints = Static(t(self.lang, "hints"), id="hints")
             yield self._hints
-        with Vertical(id="sidebar"):
-            pass
+
+    def get_theme_variable_defaults(self) -> dict[str, str]:
+        """Provide a soft edge color for themes without a custom one."""
+        color = "#3C5368" if self.current_theme.dark else "#B6C7D6"
+        return {"menu-edge": color}
 
     def on_mount(self) -> None:
         """Register themes, apply the selected language, and focus the input."""
@@ -355,10 +347,9 @@ class DaneelApp(App[None]):
         self.query_one("#prompt", PromptInput).placeholder = t(
             self.lang, "prompt_placeholder"
         )
-        if self._suggestions:
-            self._update_suggestions(
-                self.query_one("#prompt", PromptInput).text
-            )
+        self._update_suggestions(
+            self.query_one("#prompt", PromptInput).text
+        )
         self.sub_title = t(self.lang, "thinking") if self._busy else ""
 
         clear = t(self.lang, "clear_binding")
@@ -425,16 +416,95 @@ class DaneelApp(App[None]):
 
     @property
     def has_suggestions(self) -> bool:
-        """Whether the command popup is currently active."""
-        return bool(self._suggestions)
+        """Whether the command or argument menu is currently active."""
+        return bool(self._suggestions or self._choices)
 
     def _suggestion_list(self) -> OptionList:
         return self.query_one("#suggestions", OptionList)
 
-    def _hide_suggestions(self) -> None:
-        if not self._suggestions:
+    @staticmethod
+    def _two_columns(left: str, right: str, width: int) -> Text:
+        """Render a bright label and a dim description as aligned columns."""
+        return Text.assemble(
+            (left, "bold"),
+            " " * (width - len(left) + 2),
+            (right, "dim"),
+        )
+
+    def _render_menu(self, rows: list[tuple[str, str, str, str | None]]) -> None:
+        """Display aligned rows with an optional delete icon on the right."""
+        width = max((len(label) for _, label, _, _ in rows), default=0)
+        option_list = self._suggestion_list()
+        content_width = max(
+            option_list.size.width - 2,
+            width + max((len(description) + 4 for _, _, description, _ in rows), default=0),
+        )
+        options: list[Option] = []
+        for option_id, label, description, delete_id in rows:
+            prompt = self._two_columns(label, description, width)
+            if delete_id is not None:
+                prompt.append(" " * max(1, content_width - len(prompt.plain) - 1))
+                prompt.append(
+                    DELETE_ICON,
+                    RichStyle(
+                        color=self.current_theme.error, meta={"delete": delete_id}
+                    ),
+                )
+            options.append(Option(prompt, id=option_id))
+        option_list.set_options(options)
+        option_list.highlighted = 0 if rows else None
+        option_list.styles.display = "block"
+
+    def _command_rows(self) -> list[tuple[str, str, str, str | None]]:
+        """Build the two-column command list shown when `/` is typed."""
+        width = max(len(f"/{command.name}") for command in COMMANDS)
+        return [
+            (
+                f"cmd-{command.name}",
+                f"/{command.name}",
+                t(self.lang, command.description_key),
+                None,
+            )
+            for command in COMMANDS
+        ]
+
+    def show_menu(self, name: str) -> None:
+        """Open a command's argument list."""
+        command = command_named(name)
+        if command is None:
+            return
+        prompt = self.query_one("#prompt", PromptInput)
+        if command.choices == "sessions" and not self.store.list_sessions(limit=20):
+            prompt.clear()
+            self._toast(t(self.lang, "sessions_empty"), severity="warning")
             return
         self._suggestions = []
+        self._active_command = command
+        prompt.clear()
+        prompt.insert(command.insert_text)
+        prompt.cursor_location = (0, len(command.insert_text))
+        self._update_suggestions(prompt.text)
+
+    def _resolve_choices(self, command: Command) -> list[MenuEntry]:
+        """Resolve fixed, theme, or session choices for an active command."""
+        if command.choices == "themes":
+            return [MenuEntry(name, name) for name in available_themes()]
+        if command.choices == "sessions":
+            return [
+                MenuEntry(str(session.id), f"#{session.id} {session.title}")
+                for session in self.store.list_sessions(limit=20)
+            ]
+        return [
+            MenuEntry(choice.value, t(self.lang, choice.label_key))
+            for choice in (command.choices or ())
+        ]
+
+    def _hide_suggestions(self) -> None:
+        if not self.has_suggestions:
+            return
+        self._suggestions = []
+        self._choices = []
+        self._active_command = None
         option_list = self._suggestion_list()
         option_list.styles.display = "none"
         option_list.clear_options()
@@ -444,7 +514,33 @@ class DaneelApp(App[None]):
         self._hide_suggestions()
 
     def _update_suggestions(self, text: str) -> None:
-        """Filter and show slash commands while the user types their name."""
+        """Show command names or filter the choices of the active command."""
+        if self._active_command is not None:
+            query = text.partition(" ")[2].lower()
+            matches = [
+                entry
+                for entry in self._resolve_choices(self._active_command)
+                if query in f"{entry.value} {entry.label}".lower()
+            ]
+            self._choices = matches
+            option_list = self._suggestion_list()
+            if matches:
+                delete_ids = self._active_command.choices == "sessions"
+                self._render_menu(
+                    [
+                        (
+                            f"choice-{entry.value}",
+                            entry.value,
+                            entry.label,
+                            entry.value if delete_ids else None,
+                        )
+                        for entry in matches
+                    ]
+                )
+            else:
+                option_list.styles.display = "none"
+                option_list.clear_options()
+            return
         if not text.startswith("/") or " " in text:
             self._hide_suggestions()
             return
@@ -453,38 +549,62 @@ class DaneelApp(App[None]):
             self._hide_suggestions()
             return
         self._suggestions = matches
-        option_list = self._suggestion_list()
-        option_list.set_options(
+        self._render_menu(
             [
-                Option(
-                    f"{command.usage} — {t(self.lang, command.description_key)}",
-                    id=f"cmd-{command.name}",
+                (
+                    f"cmd-{command.name}",
+                    f"/{command.name}",
+                    t(self.lang, command.description_key),
+                    None,
                 )
                 for command in matches
             ]
         )
-        option_list.highlighted = 0
-        option_list.styles.display = "block"
 
     def move_suggestion(self, delta: int) -> None:
-        """Move the highlighted command, wrapping around."""
-        if not self._suggestions:
+        """Move the highlighted row, wrapping around."""
+        count = len(self._choices) if self._active_command else len(self._suggestions)
+        if not count:
             return
         option_list = self._suggestion_list()
-        count = len(self._suggestions)
         current = option_list.highlighted or 0
         option_list.highlighted = (current + delta) % count
 
-    def accept_suggestion(self) -> bool:
-        """Insert the highlighted command into the input and hide the popup."""
+    async def activate_suggestion(self) -> bool:
+        """Apply the highlighted choice, or open the highlighted command."""
+        if self._active_command is not None:
+            return await self.apply_choice()
         if not self._suggestions:
             return False
         option_list = self._suggestion_list()
         command = self._suggestions[option_list.highlighted or 0]
         prompt = self.query_one("#prompt", PromptInput)
+        if command.choices is None:
+            self._hide_suggestions()
+            prompt.clear()
+            await self.handle_command(f"/{command.name}")
+            return True
+        self._suggestions = []
+        self._active_command = command
         prompt.clear()
         prompt.insert(command.insert_text)
+        prompt.cursor_location = (0, len(command.insert_text))
+        self._update_suggestions(prompt.text)
+        return True
+
+    async def apply_choice(self) -> bool:
+        """Apply the highlighted argument immediately and close the menu."""
+        if self._active_command is None or not self._choices:
+            return False
+        option_list = self._suggestion_list()
+        entry = self._choices[option_list.highlighted or 0]
+        command = self._active_command
         self._hide_suggestions()
+        self.query_one("#prompt", PromptInput).clear()
+        if command.name == "sessions":
+            await self._load_session(int(entry.value))
+        else:
+            await self.handle_command(f"/{command.name} {entry.value}")
         return True
 
     @on(TextArea.Changed, "#prompt")
@@ -493,98 +613,30 @@ class DaneelApp(App[None]):
         self._update_suggestions(self.query_one("#prompt", PromptInput).text)
 
     @on(OptionList.OptionSelected, "#suggestions")
-    def suggestion_selected(self, event: OptionList.OptionSelected) -> None:
-        """Accept a command picked with the mouse."""
-        self.accept_suggestion()
+    async def suggestion_selected(self) -> None:
+        """Activate a command or argument picked with the mouse."""
+        await self.activate_suggestion()
 
-    def _sidebar_container(self) -> Vertical:
-        return self.query_one("#sidebar", Vertical)
+    async def delete_highlighted_session(self) -> bool:
+        """Delete the session highlighted in the palette, if any."""
+        if (
+            self._active_command is None
+            or self._active_command.choices != "sessions"
+            or not self._choices
+        ):
+            return False
+        highlighted = self._suggestion_list().highlighted or 0
+        await self._delete_session(int(self._choices[highlighted].value))
+        return True
 
-    async def _clear_sidebar(self) -> None:
-        sidebar = self._sidebar_container()
-        for child in list(sidebar.children):
-            await child.remove()
-
-    async def _open_help_sidebar(self) -> None:
-        """Show command descriptions in the right-hand panel."""
-        await self._clear_sidebar()
-        sidebar = self._sidebar_container()
-        await sidebar.mount(
-            Static(t(self.lang, "sidebar_help_title"), id="sidebar-title")
-        )
-        lines = [
-            t(self.lang, command.description_key)
-            for command in COMMANDS
-        ]
-        await sidebar.mount(Static("\n".join(lines)))
-        sidebar.styles.display = "block"
-        self._sidebar_mode = "help"
-
-    async def _open_sessions_sidebar(self) -> None:
-        """Show stored sessions in the right-hand panel."""
-        sessions = self.store.list_sessions(limit=20)
-        await self._clear_sidebar()
-        sidebar = self._sidebar_container()
-        await sidebar.mount(
-            Static(t(self.lang, "sidebar_sessions_title"), id="sidebar-title")
-        )
-        if not sessions:
-            await sidebar.mount(Static(t(self.lang, "sessions_empty")))
-        else:
-            self._session_options = {}
-            options: list[Option] = []
-            for session in sessions:
-                option_id = f"session-{session.id}"
-                self._session_options[option_id] = session.id
-                options.append(
-                    Option(
-                        t(
-                            self.lang,
-                            "session_line",
-                            id=session.id,
-                            title=session.title,
-                            count=session.message_count,
-                            date=session.updated_at[:16].replace("T", " "),
-                        ),
-                        id=option_id,
-                    )
-                )
-            option_list = OptionList(*options, id="session-list")
-            await sidebar.mount(option_list)
-            if self.current_session_id is not None:
-                current = f"session-{self.current_session_id}"
-                if current in self._session_options:
-                    option_list.highlighted = list(self._session_options).index(
-                        current
-                    )
-            actions = Vertical(id="session-actions")
-            await sidebar.mount(actions)
-            await actions.mount(
-                Button(t(self.lang, "sidebar_load"), id="session-load", variant="primary")
-            )
-            await actions.mount(
-                Button(t(self.lang, "sidebar_delete"), id="session-delete", variant="error")
-            )
-            await actions.mount(
-                Button(t(self.lang, "sidebar_close"), id="sidebar-close")
-            )
-        sidebar.styles.display = "block"
-        self._sidebar_mode = "sessions"
-
-    def _close_sidebar(self) -> None:
-        """Hide the right-hand panel and return focus to the input."""
-        self._sidebar_container().styles.display = "none"
-        self._sidebar_mode = None
-        self._session_options.clear()
-        self.query_one("#prompt", PromptInput).focus()
-
-    def _highlighted_session_id(self) -> int | None:
-        """Return the id of the highlighted session in the sidebar."""
-        option_list = self.query_one("#session-list", OptionList)
-        if option_list.highlighted is None:
-            return None
-        option = option_list.get_option_at_index(option_list.highlighted)
-        return self._session_options.get(option.id or "")
+    @on(events.MouseDown, "#suggestions")
+    def delete_session_icon(self, event: events.MouseDown) -> None:
+        """Handle a click on the delete icon shown next to a session."""
+        session_id = event.style.meta.get("delete")
+        if session_id is None:
+            return
+        event.stop()
+        self.run_worker(self._delete_session(int(session_id)))
 
     async def _load_session(self, session_id: int) -> bool:
         """Load a stored session into the conversation and chat log."""
@@ -626,44 +678,10 @@ class DaneelApp(App[None]):
         if self.current_session_id == session_id:
             await self.action_clear()
         self._toast(t(self.lang, "session_deleted", id=session_id))
-        if self._sidebar_mode == "sessions":
-            await self._open_sessions_sidebar()
-
-    @on(events.Key)
-    def close_sidebar_on_escape(self, event: events.Key) -> None:
-        """Close the sidebar with Escape."""
-        if event.key == "escape" and self._sidebar_mode:
-            event.stop()
-            self._close_sidebar()
-
-    @on(Button.Pressed, "#sidebar-close")
-    def close_sidebar_button(self) -> None:
-        """Close the sidebar with its button."""
-        self._close_sidebar()
-
-    @on(OptionList.OptionSelected, "#session-list")
-    async def select_session(self, event: OptionList.OptionSelected) -> None:
-        """Load the session chosen with the mouse or keyboard."""
-        if event.option_id:
-            await self._load_session(self._session_options[event.option_id])
-
-    @on(Button.Pressed, "#session-load")
-    async def load_session_button(self) -> None:
-        """Load the highlighted session."""
-        session_id = self._highlighted_session_id()
-        if session_id is None:
-            self._toast(t(self.lang, "session_none_selected"), severity="warning")
-            return
-        await self._load_session(session_id)
-
-    @on(Button.Pressed, "#session-delete")
-    async def delete_session_button(self) -> None:
-        """Delete the highlighted session after confirmation."""
-        session_id = self._highlighted_session_id()
-        if session_id is None:
-            self._toast(t(self.lang, "session_none_selected"), severity="warning")
-            return
-        await self._delete_session(session_id)
+        prompt = self.query_one("#prompt", PromptInput)
+        prompt.focus()
+        if self._active_command is not None:
+            self._update_suggestions(prompt.text)
 
     @on(PromptInput.Submitted, "#prompt")
     async def handle_submit(self, event: PromptInput.Submitted) -> None:
@@ -718,19 +736,14 @@ class DaneelApp(App[None]):
                     severity="warning",
                 )
         elif name == "sessions":
-            await self._open_sessions_sidebar()
-        elif name == "load":
-            try:
-                session_id = int(argument)
-            except ValueError:
-                self._toast(t(self.lang, "usage_load"), severity="warning")
-            else:
-                await self._load_session(session_id)
+            self.show_menu("sessions")
         elif name == "new":
             await self.action_clear()
             self.current_session_id = None
             self._toast(t(self.lang, "session_new"))
         elif name == "copy":
+            if argument == "all":
+                argument = ""
             if argument not in ("", "last"):
                 self._toast(t(self.lang, "usage_copy"), severity="warning")
             elif not self._transcript:
@@ -746,8 +759,6 @@ class DaneelApp(App[None]):
                 self._toast(t(self.lang, "copied"))
         elif name == "clear":
             await self.action_clear()
-        elif name == "help":
-            await self._open_help_sidebar()
         else:
             self._toast(
                 t(self.lang, "unknown_command", command=name), severity="warning"
