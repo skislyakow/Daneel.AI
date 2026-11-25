@@ -274,7 +274,7 @@ class DaneelApp(App[None]):
 
         allowed = await self.run_worker(ask()).wait()
         if not allowed:
-            await self._note(t(self.lang, "tool_denied", name=name))
+            self._toast(t(self.lang, "tool_denied", name=name), severity="warning")
         return allowed
 
     def _apply_language(self) -> None:
@@ -324,18 +324,6 @@ class DaneelApp(App[None]):
             severity=severity,
         )
 
-    async def _note(self, text: str) -> None:
-        """Show a local system message in the chat log."""
-        self._transcript.append(f"{t(self.lang, 'note')}: {text}")
-        log = self.query_one("#log", VerticalScroll)
-        await log.mount(
-            Static(
-                f"[dim]{t(self.lang, 'note')}:[/] {escape(text)}",
-                classes="message note",
-            )
-        )
-        log.scroll_end(animate=False)
-
     @on(PromptInput.Submitted, "#prompt")
     async def handle_submit(self, event: PromptInput.Submitted) -> None:
         """Handle either a local command or a message for the agent."""
@@ -360,34 +348,37 @@ class DaneelApp(App[None]):
             if argument in {"en", "ru"}:
                 self.lang = cast(UILanguage, argument)
                 self._apply_language()
-                await self._note(
+                self._toast(
                     t(self.lang, "lang_changed", language=argument.upper())
                 )
             else:
-                await self._note(t(self.lang, "usage_lang"))
+                self._toast(t(self.lang, "usage_lang"), severity="warning")
         elif name == "reply":
             if argument in {"auto", "en", "ru"}:
                 self.reply_language = cast(ReplyLanguage, argument)
                 self.conversation.client.system_prompt = build_system_prompt(argument)
-                await self._note(
+                self._toast(
                     t(self.lang, "reply_changed", language=argument.upper())
                 )
             else:
-                await self._note(t(self.lang, "usage_reply"))
+                self._toast(t(self.lang, "usage_reply"), severity="warning")
         elif name == "theme":
             if not argument:
-                await self._note(
+                self._toast(
                     t(self.lang, "theme_list", themes=", ".join(available_themes()))
                 )
             elif argument in available_themes():
                 self.theme_name = argument
                 self.theme = argument
-                await self._note(t(self.lang, "theme_changed", theme=argument))
+                self._toast(t(self.lang, "theme_changed", theme=argument))
             else:
-                await self._note(t(self.lang, "theme_unknown", theme=argument))
+                self._toast(
+                    t(self.lang, "theme_unknown", theme=argument),
+                    severity="warning",
+                )
         elif name == "copy":
             if argument not in ("", "last"):
-                await self._note(t(self.lang, "usage_copy"))
+                self._toast(t(self.lang, "usage_copy"), severity="warning")
             elif not self._transcript:
                 self._toast(t(self.lang, "nothing_to_copy"), severity="warning")
             elif argument == "last":
@@ -402,9 +393,11 @@ class DaneelApp(App[None]):
         elif name == "clear":
             await self.action_clear()
         elif name == "help":
-            await self._note(t(self.lang, "help_text"))
+            self._toast(t(self.lang, "help_text"))
         else:
-            await self._note(t(self.lang, "unknown_command", command=name))
+            self._toast(
+                t(self.lang, "unknown_command", command=name), severity="warning"
+            )
 
     async def send(self, text: str) -> None:
         """Send a message and render the streaming answer."""
@@ -447,7 +440,7 @@ class DaneelApp(App[None]):
             return
         self.lang = "ru" if self.lang == "en" else "en"
         self._apply_language()
-        await self._note(t(self.lang, "lang_changed", language=self.lang.upper()))
+        self._toast(t(self.lang, "lang_changed", language=self.lang.upper()))
 
     async def action_clear(self) -> None:
         """Clear the conversation and reset the chat log."""

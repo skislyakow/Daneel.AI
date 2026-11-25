@@ -77,6 +77,25 @@ async def test_chat_messages_have_no_speaker_labels() -> None:
     await http.aclose()
 
 
+async def test_language_change_notifies_without_chat_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+    notified = capture_notifications(monkeypatch, app)
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/lang ru")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert "Язык интерфейса: RU" in notified
+        app.screen.text_select_all()
+        assert "Язык интерфейса: RU" not in (app.screen.get_selected_text() or "")
+
+    await http.aclose()
+
+
 async def test_tui_language_and_reply_commands() -> None:
     http = mock_http()
     app = DaneelApp(Conversation(OllamaClient(client=http)))
@@ -276,8 +295,8 @@ async def test_copy_command_copies_visible_transcript(
 
         assert "привет" in app.clipboard
         assert "Привет!" in app.clipboard
-        assert "Interface language: EN" in app.clipboard
         assert "running offline" not in app.clipboard
+        assert "Interface language: EN" in notified
         assert STRINGS["en"]["copied"] in notified
 
     await http.aclose()
@@ -328,18 +347,20 @@ async def test_copy_last_uses_the_most_recent_answer() -> None:
 
 
 @pytest.mark.parametrize("language", ["en", "ru"])
-async def test_help_lists_copy_command(language: str) -> None:
+async def test_help_lists_copy_command(
+    language: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     http = mock_http()
     app = DaneelApp(
         Conversation(OllamaClient(client=http)), ui_language=language
     )
+    notified = capture_notifications(monkeypatch, app)
 
     async with app.run_test() as pilot:
         await pilot.press(*"/help")
         await pilot.press("enter")
-        app.screen.text_select_all()
 
-        assert "/copy" in app.screen.get_selected_text()
+        assert "/copy" in notified[0]
 
     await http.aclose()
 
