@@ -11,6 +11,13 @@ def test_locales_have_the_same_keys() -> None:
     assert set(STRINGS["en"]) == set(STRINGS["ru"])
 
 
+def test_russian_hints_use_only_latin_shortcuts() -> None:
+    assert (
+        STRINGS["ru"]["hints"]
+        == "Ctrl+T — Язык · Ctrl+L — Очистить · Ctrl+C — Выход"
+    )
+
+
 def test_resolve_ui_language() -> None:
     assert resolve_ui_language() == "en"
     assert resolve_ui_language("ru") == "ru"

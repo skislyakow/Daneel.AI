@@ -98,10 +98,7 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
             "[dim]Введите сообщение и нажмите Enter. Ctrl+L/Д очищает диалог, "
             "Ctrl+T/Е переключает язык интерфейса, Ctrl+C/С — выход.[/]"
         ),
-        "hints": (
-            "Ctrl+T / Ctrl+Е — Язык · Ctrl+L / Ctrl+Д — Очистить · "
-            "Ctrl+C / Ctrl+С — Выход"
-        ),
+        "hints": "Ctrl+T — Язык · Ctrl+L — Очистить · Ctrl+C — Выход",
         "prompt_placeholder": "Сообщение... (Enter — отправить)",
         "thinking": "думает…",
         "error_prefix": "Ошибка",
