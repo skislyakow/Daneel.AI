@@ -35,7 +35,7 @@ Build a minimal working protocol between the user, the agent, and a local LLM, w
    uv run daneel --cli
    ```
 
-In the TUI: **Enter** sends a message (multiline text can be pasted), **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. The localized hint bar at the bottom shows both variants. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/clear`, `/help`.
+In the TUI: type into the multiline input (it grows with the content), **Enter** sends the whole message, **Shift+Enter** inserts a newline. **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. The localized hint bar at the bottom shows both variants. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/clear`, `/help`.
 
 ## 🌍 Run from anywhere
 
@@ -108,13 +108,14 @@ A confirmation callback supplied by a caller always takes precedence over the in
 
 ## 📋 Copying chat
 
-Right-click text selected in the chat log to copy just that fragment. `/copy` copies the whole visible transcript (messages, errors, and system notes), while `/copy last` copies only the latest agent answer. Feedback is localized and shown as a short notification in the top-right corner that disappears after two seconds; if nothing is selected or the chat is empty, a warning notification is shown instead. `/help` lists both commands.
+Right-click text selected in the chat log to copy just that fragment. Right-click the input field to paste text at the cursor: the system clipboard is used when available, otherwise Daneel's own clipboard is used silently. On Linux, system clipboard access needs `xclip`/`xsel` (X11) or `wl-copy`/`wl-paste` (Wayland); headless and SSH sessions fall back to the in-app clipboard. `/copy` copies the whole visible transcript (messages, errors, and system notes), while `/copy last` copies only the latest agent answer. Feedback is localized and shown as a short notification in the top-right corner that disappears after two seconds; if nothing is selected or the chat is empty, a warning notification is shown instead. `/help` lists both commands.
 
 Copying uses the terminal clipboard protocol (OSC52), which works in most terminals but not in all of them.
 
 ## 🧩 Code layout
 
 * `daneel/core.py` — core logic: streaming `/api/chat`, conversation history, the tool-call loop, and error handling.
+* `daneel/clipboard.py` — system clipboard reads with an in-app fallback.
 * `daneel/config.py` — environment-based settings with CLI overrides.
 * `daneel/i18n.py` — interface strings, language resolution, and system prompt assembly.
 * `daneel/theme.py` — custom Daneel themes, theme resolution, and registration.

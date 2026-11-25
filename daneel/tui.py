@@ -5,14 +5,16 @@ from __future__ import annotations
 from typing import cast
 
 from rich.markup import escape
-from textual import on
+from textual import events, on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.events import MouseDown
+from textual.message import Message
 from textual.notifications import SeverityLevel
 from textual.screen import ModalScreen
-from textual.widgets import Button, Header, Input, Static
+from textual.widgets import Button, Header, Static, TextArea
 
+from .clipboard import read_text
 from .confirmation import install_confirmation, render_arguments
 from .core import Conversation, OllamaError
 from .i18n import ReplyLanguage, UILanguage, build_system_prompt, t
@@ -20,6 +22,59 @@ from .theme import available_themes, register_themes
 from .tools import Arguments
 
 RIGHT_BUTTON = 3
+
+
+class PromptInput(TextArea):
+    """Multiline chat input that grows with its content."""
+
+    MIN_HEIGHT = 3
+    MAX_HEIGHT = 12
+
+    class Submitted(Message):
+        """Sent when Enter is pressed without Shift."""
+
+        def __init__(self, prompt: PromptInput, text: str) -> None:
+            self.prompt = prompt
+            self.text = text
+            super().__init__()
+
+        @property
+        def control(self) -> PromptInput:
+            """Widget that sent the message."""
+            return self.prompt
+
+    def on_mount(self) -> None:
+        """Set the initial height."""
+        self._resize()
+
+    @on(TextArea.Changed)
+    def handle_changed(self) -> None:
+        """Grow or shrink with the content."""
+        self._resize()
+
+    def _resize(self) -> None:
+        lines = max(1, self.text.count("\n") + 1)
+        self.styles.height = min(self.MAX_HEIGHT, max(self.MIN_HEIGHT, lines + 2))
+
+    @on(events.Key)
+    def submit_on_enter(self, event: events.Key) -> None:
+        """Submit on Enter; leave Shift+Enter alone so it inserts a newline."""
+        if event.key != "enter":
+            return
+        event.stop()
+        event.prevent_default()
+        self.post_message(self.Submitted(self, self.text))
+
+    @on(MouseDown)
+    async def handle_right_click(self, event: MouseDown) -> None:
+        """Paste clipboard text at the cursor instead of copying a selection."""
+        if event.button != RIGHT_BUTTON:
+            return
+        event.stop()
+        text = read_text(self.app.clipboard)
+        if text:
+            self.insert(text)
+            self.focus()
 
 
 class ToolConfirmationScreen(ModalScreen[bool]):
@@ -182,7 +237,9 @@ class DaneelApp(App[None]):
             self._welcome = Static(t(self.lang, "welcome"), classes="message")
             yield self._welcome
         with Vertical(id="composer"):
-            yield Input(placeholder=t(self.lang, "prompt_placeholder"), id="prompt")
+            yield PromptInput(
+                placeholder=t(self.lang, "prompt_placeholder"), id="prompt"
+            )
             self._hints = Static(t(self.lang, "hints"), id="hints")
             yield self._hints
 
@@ -192,7 +249,7 @@ class DaneelApp(App[None]):
         self.theme = self.theme_name
         self._apply_language()
         install_confirmation(self.conversation, self.confirm_tool_call)
-        self.query_one("#prompt", Input).focus()
+        self.query_one("#prompt", PromptInput).focus()
 
     async def confirm_tool_call(self, name: str, arguments: Arguments) -> bool:
         """Ask the user in a modal whether the tool call may run."""
@@ -217,7 +274,7 @@ class DaneelApp(App[None]):
             self._welcome.update(t(self.lang, "welcome"))
         if self._hints is not None:
             self._hints.update(t(self.lang, "hints"))
-        self.query_one("#prompt", Input).placeholder = t(
+        self.query_one("#prompt", PromptInput).placeholder = t(
             self.lang, "prompt_placeholder"
         )
         self.sub_title = t(self.lang, "thinking") if self._busy else ""
@@ -270,15 +327,15 @@ class DaneelApp(App[None]):
         )
         log.scroll_end(animate=False)
 
-    @on(Input.Submitted, "#prompt")
-    async def handle_submit(self, event: Input.Submitted) -> None:
+    @on(PromptInput.Submitted, "#prompt")
+    async def handle_submit(self, event: PromptInput.Submitted) -> None:
         """Handle either a local command or a message for the agent."""
         if self._busy:
             return
-        text = event.value.strip()
+        text = event.text.strip()
         if not text:
             return
-        event.input.value = ""
+        event.prompt.clear()
         if text.startswith("/"):
             await self.handle_command(text)
             return
@@ -342,7 +399,7 @@ class DaneelApp(App[None]):
 
     async def send(self, text: str) -> None:
         """Send a message and render the streaming answer."""
-        prompt = self.query_one("#prompt", Input)
+        prompt = self.query_one("#prompt", PromptInput)
         log = self.query_one("#log", VerticalScroll)
         self._busy = True
         prompt.disabled = True

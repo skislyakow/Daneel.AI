@@ -3,13 +3,15 @@ import json
 from typing import Any
 
 import httpx
+import pyperclip
 import pytest
-from textual.widgets import Input, Static
+from textual.widgets import Static
 
+from daneel import clipboard
 from daneel.core import Conversation, OllamaClient
 from daneel.i18n import STRINGS, build_system_prompt
 from daneel.tools import FunctionTool, ToolRegistry
-from daneel.tui import DaneelApp
+from daneel.tui import DaneelApp, PromptInput
 
 
 def mock_http() -> httpx.AsyncClient:
@@ -42,7 +44,7 @@ async def test_tui_submits_prompt_and_stores_answer() -> None:
 
     async with app.run_test() as pilot:
         assert app.lang == "en"
-        assert app.query_one("#prompt", Input).placeholder == STRINGS["en"][
+        assert app.query_one("#prompt", PromptInput).placeholder == STRINGS["en"][
             "prompt_placeholder"
         ]
         assert app.query_one("#hints", Static).content == STRINGS["en"]["hints"]
@@ -55,7 +57,7 @@ async def test_tui_submits_prompt_and_stores_answer() -> None:
             ("user", "привет"),
             ("assistant", "Привет!"),
         ]
-        assert app.query_one("#prompt", Input).value == ""
+        assert app.query_one("#prompt", PromptInput).text == ""
 
     await http.aclose()
 
@@ -69,7 +71,7 @@ async def test_tui_language_and_reply_commands() -> None:
         await pilot.press("enter")
         await pilot.pause()
         assert app.lang == "ru"
-        assert app.query_one("#prompt", Input).placeholder == STRINGS["ru"][
+        assert app.query_one("#prompt", PromptInput).placeholder == STRINGS["ru"][
             "prompt_placeholder"
         ]
         assert app.query_one("#hints", Static).content == STRINGS["ru"]["hints"]
@@ -459,5 +461,95 @@ async def test_tui_theme_command() -> None:
         await pilot.press("enter")
         await pilot.pause()
         assert app.current_theme.name == "dracula"
+
+    await http.aclose()
+
+
+async def test_prompt_grows_with_multiline_content() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        prompt = app.query_one("#prompt", PromptInput)
+        assert prompt.styles.height.value == PromptInput.MIN_HEIGHT
+
+        prompt.load_text("line one\nline two\nline three")
+        await pilot.pause()
+
+        assert prompt.styles.height.value == 5
+
+    await http.aclose()
+
+
+async def test_prompt_submits_multiline_text_on_enter() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        prompt = app.query_one("#prompt", PromptInput)
+        prompt.load_text("first line\nsecond line\nthird line")
+        await pilot.pause()
+
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+
+        assert app.conversation.messages[0].content == (
+            "first line\nsecond line\nthird line"
+        )
+        assert prompt.text == ""
+
+    await http.aclose()
+
+
+async def test_right_click_in_input_pastes_system_clipboard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+    notified = capture_notifications(monkeypatch, app)
+    monkeypatch.setattr(clipboard.pyperclip, "paste", lambda: "system text")
+
+    async with app.run_test() as pilot:
+        await pilot.click("#prompt", button=3)
+
+        assert app.query_one("#prompt", PromptInput).text == "system text"
+        assert notified == []
+
+    await http.aclose()
+
+
+async def test_right_click_in_input_falls_back_to_app_clipboard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    def unavailable() -> str:
+        raise pyperclip.PyperclipException("no clipboard utility")
+
+    monkeypatch.setattr(clipboard.pyperclip, "paste", unavailable)
+    app.copy_to_clipboard("internal text")
+
+    async with app.run_test() as pilot:
+        await pilot.click("#prompt", button=3)
+
+        assert app.query_one("#prompt", PromptInput).text == "internal text"
+
+    await http.aclose()
+
+
+async def test_right_click_in_input_with_empty_clipboard_is_noop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+    notified = capture_notifications(monkeypatch, app)
+    monkeypatch.setattr(clipboard.pyperclip, "paste", lambda: "")
+
+    async with app.run_test() as pilot:
+        await pilot.click("#prompt", button=3)
+
+        assert app.query_one("#prompt", PromptInput).text == ""
+        assert notified == []
 
     await http.aclose()
