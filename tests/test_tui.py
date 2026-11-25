@@ -378,6 +378,25 @@ async def test_right_click_copies_selected_text(monkeypatch: pytest.MonkeyPatch)
     await http.aclose()
 
 
+async def test_right_click_copies_real_selection() -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"привет")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+        app.screen.text_select_all()
+        expected = app.screen.get_selected_text()
+        assert expected
+
+        await pilot.click("#log", button=3)
+
+        assert app.clipboard == expected
+
+    await http.aclose()
+
+
 async def test_right_click_without_selection_does_not_copy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

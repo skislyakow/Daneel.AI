@@ -8,7 +8,7 @@ from rich.markup import escape
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.events import Click
+from textual.events import MouseDown
 from textual.screen import ModalScreen
 from textual.widgets import Button, Header, Input, Static
 
@@ -226,9 +226,13 @@ class DaneelApp(App[None]):
         self._bindings.bind("ctrl+\u0441", "quit", quit_text, priority=True)
         self.refresh_bindings()
 
-    @on(Click)
-    async def handle_right_click(self, event: Click) -> None:
-        """Copy the current selection when the right mouse button is pressed."""
+    @on(MouseDown)
+    async def handle_right_click(self, event: MouseDown) -> None:
+        """Copy the current selection when the right mouse button is pressed.
+
+        The selection has to be read on MouseDown: Textual clears it on the
+        MouseUp that precedes the Click event for an in-place click.
+        """
         if event.button != RIGHT_BUTTON:
             return
         selected = self.screen.get_selected_text()
