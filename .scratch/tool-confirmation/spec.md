@@ -52,3 +52,7 @@ A good test observes behavior through a public interface: it presses keys or fee
 ## Дополнительные заметки
 
 The two interfaces can be delivered independently: neither depends on the other, and both reuse the same confirmation contract already present in the core.
+
+## Уточнение после реализации
+
+По последующему решению пользователя встроенные инструменты (`get_weather`, `list_directory`, `read_file`) выполняются без подтверждения (`requires_confirmation=False`), чтобы не прерывать работу диалогом. Механизм подтверждения в реестре и обеих оболочках сохранён для будущих инструментов, которым он понадобится.

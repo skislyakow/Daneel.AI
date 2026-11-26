@@ -27,7 +27,7 @@ def _value(items: list, index: int) -> float:
 
 
 def create_weather_tool(client: httpx.AsyncClient | None = None) -> FunctionTool:
-    """Build a confirmed tool that resolves a city and returns its forecast."""
+    """Build a tool that resolves a city and returns its forecast."""
 
     async def runner(arguments: Arguments) -> str:
         location = str(arguments.get("location", "")).strip()
@@ -109,5 +109,5 @@ def create_weather_tool(client: httpx.AsyncClient | None = None) -> FunctionTool
             "required": ["location"],
         },
         runner=runner,
-        requires_confirmation=True,
+        requires_confirmation=False,
     )

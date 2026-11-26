@@ -35,7 +35,7 @@ Build a minimal working protocol between the user, the agent, and a local LLM, w
    uv run daneel --cli
    ```
 
-In the TUI: type into the multiline input (it grows with the content), **Enter** sends the whole message, **Shift+Enter** inserts a newline. **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. The localized hint bar at the bottom shows both variants. Typing `/` opens a command palette: the command name and a dimmed description are shown as two columns, filtered as you type. Use **Up/Down** to navigate and **Enter** (or a mouse click) to open the highlighted command's arguments; commands without arguments run immediately. In the argument palette, type a letter to filter the values, navigate with **Up/Down**, and press **Enter** to apply the value instantly — the input is cleared and the change takes effect without another command. **Escape** closes the palette. `/lang`, `/reply`, `/copy`, `/theme` (installed themes) and `/sessions` (saved sessions) use argument palettes; `/new` and `/clear` run right away. The command palette itself opens with `/`. Direct forms like `/lang ru` still work. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/sessions`, `/new`, `/clear`, `/copy [all|last]`.
+In the TUI: type into the multiline input (it grows with the content), **Enter** sends the whole message, **Shift+Enter** inserts a newline. **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. Typing `/` opens a command palette: the command name and a dimmed description are shown as two columns, filtered as you type. Use **Up/Down** to navigate and **Enter** (or a mouse click) to open the highlighted command's arguments; commands without arguments run immediately. In the argument palette, type a letter to filter the values, navigate with **Up/Down**, and press **Enter** to apply the value instantly — the input is cleared and the change takes effect without another command. **Escape** closes the palette. `/lang`, `/reply`, `/copy`, `/theme` (installed themes) and `/sessions` (saved sessions) use argument palettes; `/new` and `/clear` run right away. The command palette itself opens with `/`. Direct forms like `/lang ru` still work. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/sessions`, `/new`, `/clear`, `/copy [all|last]`. While the agent works, a dim golden animated counter (`◌ Thinking · 2s` / `◌ Думаю · 2с`) appears in the chat directly beneath the answer line; when the answer is done, the same line changes to a short summary (`● Thought · 2s` / `● Думал · 2с`). The current workspace directory is always visible at the bottom of the window.
 
 ## 🌍 Run from anywhere
 
@@ -57,7 +57,7 @@ daneel --cli --lang ru --reply ru
 
 ## ⚙️ Configuration
 
-Settings are read from environment variables; CLI flags take precedence.
+Settings are read from environment variables; CLI flags take precedence. A local `.env` file in the project root is loaded automatically on startup (real environment variables win). It is gitignored; see `.env` in the repository for the recommended values.
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
@@ -68,6 +68,7 @@ Settings are read from environment variables; CLI flags take precedence.
 | `DANEEL_REPLY` | Reply mode (`auto`/`en`/`ru`) | `auto` |
 | `DANEEL_THEME` | Textual theme name | `daneel` |
 | `DANEEL_SESSION_DB` | Path to the session SQLite database | platform-specific user data dir |
+| `DANEEL_ENABLE_FS_TOOLS` | Enable read-only filesystem tools (`1`/`true`/`yes`) | unset (disabled) |
 
 `DANEEL_WORKSPACE` is the safety boundary for tools that will read or change files. Since the agent can be started from anywhere, do not rely on the current directory for operations.
 
@@ -100,16 +101,15 @@ In the TUI, run `/theme <name>` to switch instantly or `/theme` to list availabl
 
 The terminal font is controlled by your terminal emulator, not by the application. A monospace font with good Cyrillic coverage (for example Cascadia Code or JetBrains Mono) is recommended.
 
-## 🧰 Tool confirmation
+## 🧰 Tools
 
-The only tool enabled by default is `get_weather`, which looks up a city and returns its daily forecast from the free Open-Meteo APIs (no API key). Other tools are opt-in. Every tool call still requires confirmation; the active interface asks before running it:
+The tool enabled by default is `get_weather`, which looks up a city and returns its daily forecast from the free Open-Meteo APIs (no API key). Set `DANEEL_ENABLE_FS_TOOLS=1` to add two read-only tools: `list_directory` and `read_file`. Both are rooted at `DANEEL_WORKSPACE` (the current directory by default): any path resolving outside that directory is rejected. Listings are capped at 200 entries and files at 64 KB. Writing, deleting and command execution are not included.
 
-* **CLI:** `Allow tool <name> with <arguments>? [Y/n]` — Enter (or `y`/`yes`/`да`) approves; `n`/`no`/`нет` denies. A denial is printed as a system message and the tool is not executed.
-* **TUI:** a modal dialog shows the tool name and arguments. Enter confirms the focused button (Allow by default), Tab switches to Deny, and Esc or `n` denies. Denials appear as a note in the chat log.
+Bundled tools run **without a confirmation dialog**. The registry still supports `requires_confirmation=True` for future tools that need it, and both interfaces keep confirmation callbacks for that case. The original design and its tickets live in `.scratch/tool-confirmation/`.
 
-A confirmation callback supplied by a caller always takes precedence over the interface default. The full design and its tickets live in `.scratch/tool-confirmation/`.
+For example, ask «какой прогноз погоды в Острогожске на завтра?» — the agent will call `get_weather` and answer using the returned forecast. Tool calling needs a model that supports it: `qwen3.5:4b` works reliably, while the tiny default `qwen2.5:1.5b` often ignores tools — set `DANEEL_MODEL=qwen3.5:4b` (already done in `.env`).
 
-For example, ask «какой прогноз погоды в Острогожске на завтра?» and approve the `get_weather` call — the agent will answer using the returned forecast. The tool accepts a city name (including Cyrillic) and returns labelled forecasts for today and tomorrow. Tool calling needs a model that supports it: `qwen3.5:4b` works reliably, while the tiny default `qwen2.5:1.5b` often ignores tools — set `DANEEL_MODEL=qwen3.5:4b` for weather questions.
+The filesystem specification and tickets live in `.scratch/filesystem-tools/`.
 
 ## 📋 Copying chat
 
@@ -137,7 +137,7 @@ The database path comes from `DANEEL_SESSION_DB` or the platform-specific user d
 * `daneel/theme.py` — custom Daneel themes, theme resolution, and registration.
 * `daneel/cli.py` — plain-text confirmation prompt with injected input/output.
 * `daneel/confirmation.py` — shared confirmation wiring and argument rendering used by both interfaces.
-* `daneel/tools/` — tool contracts and registry; the extension point for agent operations. `tools/weather.py` provides the enabled-by-default `get_weather` tool; confirmation is mandatory for every call.
+* `daneel/tools/` — tool contracts and registry; the extension point for agent operations. `tools/weather.py` provides the enabled-by-default `get_weather` tool; `tools/filesystem.py` adds opt-in read-only `list_directory`/`read_file` bounded by the workspace. Confirmation is mandatory for every call.
 * `daneel/tui.py` — thin Textual layer: chat log, input field, localized messages.
 * `main.py` — entry point; `--cli` selects the plain-text mode.
 * `tests/` — core, config, i18n, theme, tools, storage, and TUI tests with a mock HTTP transport.

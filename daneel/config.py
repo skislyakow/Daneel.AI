@@ -34,6 +34,24 @@ def default_preferences_path() -> Path:
     return Path(user_config_dir("daneel", appauthor="Daneel.AI")) / PREFERENCES_FILENAME
 
 
+def project_env_path() -> Path:
+    """Return the .env file next to the project's pyproject.toml."""
+    return Path(__file__).resolve().parent.parent / ".env"
+
+
+def load_env_file(path: Path | None = None) -> None:
+    """Load KEY=VALUE pairs into os.environ without overriding real variables."""
+    target = path or project_env_path()
+    if not target.exists():
+        return
+    for line in target.read_text(encoding="utf-8").splitlines():
+        entry = line.strip()
+        if not entry or entry.startswith("#") or "=" not in entry:
+            continue
+        key, _, value = entry.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
 @dataclass(slots=True)
 class Preferences:
     """User preferences changed from the interface and kept between runs."""
@@ -144,6 +162,7 @@ class Settings:
     reply_language: ReplyLanguage = "auto"
     theme: str = DEFAULT_THEME
     session_db: Path = field(default_factory=default_db_path)
+    enable_fs_tools: bool = False
 
     @classmethod
     def from_env(
@@ -164,6 +183,8 @@ class Settings:
             session_db=Path(
                 env.get("DANEEL_SESSION_DB", str(default_db_path()))
             ).expanduser(),
+            enable_fs_tools=env.get("DANEEL_ENABLE_FS_TOOLS", "").lower()
+            in {"1", "true", "yes"},
         )
 
     def with_overrides(
@@ -181,4 +202,5 @@ class Settings:
             reply_language=reply_language or self.reply_language,
             theme=resolve_theme(theme, self.theme) if theme else self.theme,
             session_db=self.session_db,
+            enable_fs_tools=self.enable_fs_tools,
         )

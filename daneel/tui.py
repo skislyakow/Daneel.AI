@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from pathlib import Path
 from typing import cast
 
 from rich.markup import escape
@@ -14,6 +16,7 @@ from textual.events import MouseDown
 from textual.message import Message
 from textual.notifications import SeverityLevel
 from textual.screen import ModalScreen
+from textual.timer import Timer
 from textual.widgets import Button, Header, OptionList, Static, TextArea
 from textual.widgets._option_list import Option
 
@@ -22,12 +25,13 @@ from .commands import COMMANDS, Command, MenuEntry, command_named, matching_comm
 from .config import PreferencesStore
 from .confirmation import install_confirmation, render_arguments
 from .core import Conversation, Message as ChatMessage, OllamaError
-from .i18n import ReplyLanguage, UILanguage, build_system_prompt, t
+from .i18n import ReplyLanguage, UILanguage, build_system_prompt, format_duration, t
 from .storage import SessionStore
 from .theme import available_themes, register_themes
 from .tools import Arguments
 
 RIGHT_BUTTON = 3
+SPINNER_FRAMES = ("◌", "◍", "◉", "●", "◉", "◍")
 DELETE_ICON = "✕"
 
 
@@ -248,16 +252,15 @@ class DaneelApp(App[None]):
         border-left: vkey $menu-edge;
         border-right: vkey $menu-edge;
     }
-    #hints {
-        height: 3;
-        margin: 1 2 1 2;
-        padding: 0 1;
-        border: none;
-        border-left: vkey $menu-edge;
-        border-right: vkey $menu-edge;
-        content-align: left middle;
-        color: $footer-description-foreground;
-        background: $footer-background;
+    .thinking-summary {
+        height: 1;
+        margin: 0 0 1 2;
+        color: $warning;
+    }
+    #workspace {
+        height: 1;
+        margin: 0 2 1 2;
+        color: $text-muted;
     }
     #textual-toastrack {
         dock: top;
@@ -275,6 +278,7 @@ class DaneelApp(App[None]):
         theme_name: str = "daneel",
         store: SessionStore | None = None,
         preferences: PreferencesStore | None = None,
+        workspace: Path | None = None,
     ) -> None:
         super().__init__()
         self.conversation = conversation
@@ -283,15 +287,20 @@ class DaneelApp(App[None]):
         self.theme_name = theme_name
         self.store = store or SessionStore(":memory:")
         self.preferences = preferences
+        self.workspace = workspace or Path.cwd()
         self.current_session_id: int | None = None
         self._busy = False
         self._welcome: Static | None = None
-        self._hints: Static | None = None
+        self._workspace: Static | None = None
         self._transcript: list[str] = []
         self._last_answer: str | None = None
         self._suggestions: list[Command] = []
         self._choices: list[MenuEntry] = []
         self._active_command: Command | None = None
+        self._thinking_started: float | None = None
+        self._thinking_timer: Timer | None = None
+        self._thinking_widget: Static | None = None
+        self._thinking_frame = 0
 
     def compose(self) -> ComposeResult:
         """Build the initial widget tree."""
@@ -304,8 +313,10 @@ class DaneelApp(App[None]):
             yield PromptInput(
                 placeholder=t(self.lang, "prompt_placeholder"), id="prompt"
             )
-            self._hints = Static(t(self.lang, "hints"), id="hints")
-            yield self._hints
+            self._workspace = Static(
+                t(self.lang, "workspace", path=self.workspace), id="workspace"
+            )
+            yield self._workspace
 
     def get_theme_variable_defaults(self) -> dict[str, str]:
         """Provide a soft edge color for themes without a custom one."""
@@ -345,15 +356,17 @@ class DaneelApp(App[None]):
         """Update language-dependent widgets and key bindings."""
         if self._welcome is not None:
             self._welcome.update(t(self.lang, "welcome"))
-        if self._hints is not None:
-            self._hints.update(t(self.lang, "hints"))
+        if self._workspace is not None:
+            self._workspace.update(
+                t(self.lang, "workspace", path=self.workspace)
+            )
         self.query_one("#prompt", PromptInput).placeholder = t(
             self.lang, "prompt_placeholder"
         )
         self._update_suggestions(
             self.query_one("#prompt", PromptInput).text
         )
-        self.sub_title = t(self.lang, "thinking") if self._busy else ""
+        self.sub_title = ""
 
         clear = t(self.lang, "clear_binding")
         toggle = t(self.lang, "toggle_binding")
@@ -775,19 +788,61 @@ class DaneelApp(App[None]):
                 t(self.lang, "unknown_command", command=name), severity="warning"
             )
 
+    def _start_thinking(self, widget: Static) -> None:
+        """Animate a live counter in the status line under the answer."""
+        self._thinking_started = time.monotonic()
+        self._thinking_widget = widget
+        self._thinking_frame = 0
+        self._render_thinking(0)
+        self._thinking_timer = self.set_interval(0.1, self._update_thinking)
+
+    def _render_thinking(self, elapsed: int) -> None:
+        if self._thinking_widget is None:
+            return
+        spinner = SPINNER_FRAMES[self._thinking_frame]
+        self._thinking_widget.update(
+            t(
+                self.lang,
+                "thinking_elapsed",
+                spinner=spinner,
+                duration=format_duration(elapsed),
+            )
+        )
+
+    def _update_thinking(self) -> None:
+        if self._thinking_started is None:
+            return
+        elapsed = int((time.monotonic() - self._thinking_started) * 1000)
+        self._thinking_frame = (self._thinking_frame + 1) % len(SPINNER_FRAMES)
+        self._render_thinking(elapsed)
+
+    def _stop_thinking(self) -> int:
+        """Stop the animation and return the total elapsed milliseconds."""
+        elapsed = 0
+        if self._thinking_started is not None:
+            elapsed = int((time.monotonic() - self._thinking_started) * 1000)
+        if self._thinking_timer is not None:
+            self._thinking_timer.stop()
+            self._thinking_timer = None
+        self._thinking_started = None
+        self._thinking_widget = None
+        return elapsed
+
     async def send(self, text: str) -> None:
         """Send a message and render the streaming answer."""
         prompt = self.query_one("#prompt", PromptInput)
         log = self.query_one("#log", VerticalScroll)
         self._busy = True
         prompt.disabled = True
-        self.sub_title = t(self.lang, "thinking")
         start_len = len(self.conversation.messages)
 
         await log.mount(Static(escape(text), classes="message user"))
         self._transcript.append(text)
         answer = Static("", classes="message assistant")
         await log.mount(answer)
+        status = Static("", classes="thinking-summary")
+        await log.mount(status)
+        self._start_thinking(status)
 
         received = ""
         try:
@@ -818,7 +873,15 @@ class DaneelApp(App[None]):
         finally:
             self._busy = False
             prompt.disabled = False
-            self.sub_title = ""
+            elapsed = self._stop_thinking()
+            status.update(
+                t(
+                    self.lang,
+                    "thinking_summary",
+                    duration=format_duration(elapsed),
+                )
+            )
+            log.scroll_end(animate=False)
             prompt.focus()
 
     async def action_toggle_language(self) -> None:

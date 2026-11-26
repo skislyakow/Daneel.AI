@@ -11,7 +11,7 @@ from typing import cast
 
 from daneel.cli import cli_confirmation
 from daneel.confirmation import install_confirmation
-from daneel.config import PreferencesStore, Settings
+from daneel.config import PreferencesStore, Settings, load_env_file
 from daneel.core import Conversation, OllamaClient, OllamaError
 from daneel.i18n import (
     UILanguage,
@@ -21,6 +21,7 @@ from daneel.i18n import (
 )
 from daneel.storage import SessionStore
 from daneel.tools import ToolRegistry
+from daneel.tools.filesystem import create_filesystem_tools
 from daneel.tools.weather import create_weather_tool
 from daneel.tui import DaneelApp
 
@@ -81,6 +82,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    load_env_file()
     preferences = PreferencesStore.load()
     settings = Settings.from_env(
         os.environ, preferences=preferences.preferences.with_environment(os.environ)
@@ -109,9 +111,12 @@ def main() -> None:
     if remember:
         preferences.update(**remember)
 
+    tools = [create_weather_tool()]
+    if settings.enable_fs_tools:
+        tools.extend(create_filesystem_tools(settings.workspace))
     conversation = Conversation(
         OllamaClient.from_settings(settings),
-        tools=ToolRegistry([create_weather_tool()]),
+        tools=ToolRegistry(tools),
     )
     store = SessionStore(settings.session_db)
 
@@ -131,6 +136,7 @@ def main() -> None:
             theme_name=settings.theme,
             store=store,
             preferences=preferences,
+            workspace=settings.workspace,
         ).run()
 
 
