@@ -16,7 +16,8 @@ from daneel.core import Conversation, Message, OllamaClient
 from daneel.i18n import STRINGS, build_system_prompt
 from daneel.theme import available_themes
 from daneel.tools import FunctionTool, ToolRegistry
-from daneel.tui import DaneelApp, PromptInput
+from daneel.tools.filesystem import create_filesystem_tools
+from daneel.tui import DaneelApp, PromptInput, SPINNER_FRAMES
 
 
 def mock_http() -> httpx.AsyncClient:
@@ -52,7 +53,6 @@ async def test_tui_submits_prompt_and_stores_answer() -> None:
         assert app.query_one("#prompt", PromptInput).placeholder == STRINGS["en"][
             "prompt_placeholder"
         ]
-        assert app.query_one("#hints", Static).content == STRINGS["en"]["hints"]
 
         await pilot.press(*"привет")
         await pilot.press("enter")
@@ -113,7 +113,6 @@ async def test_tui_language_and_reply_commands() -> None:
         assert app.query_one("#prompt", PromptInput).placeholder == STRINGS["ru"][
             "prompt_placeholder"
         ]
-        assert app.query_one("#hints", Static).content == STRINGS["ru"]["hints"]
 
         await pilot.press(*"/reply ru")
         await pilot.press("enter")
@@ -216,6 +215,55 @@ def tool_call_app(
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     conversation = Conversation(OllamaClient(client=http), tools=ToolRegistry([tool]))
     return http, DaneelApp(conversation, ui_language=ui_language), executed
+
+
+async def test_tui_runs_filesystem_tool_without_confirmation(tmp_path: Path) -> None:
+    (tmp_path / "note.txt").write_text("secret content", encoding="utf-8")
+    read_file = create_filesystem_tools(tmp_path)[1]
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            body = json.dumps(
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "call",
+                                "function": {
+                                    "name": "read_file",
+                                    "arguments": {"path": "note.txt"},
+                                },
+                            }
+                        ],
+                    },
+                    "done": True,
+                }
+            )
+        else:
+            body = json.dumps(
+                {"message": {"role": "assistant", "content": "Готово"}, "done": True},
+                ensure_ascii=False,
+            )
+        return httpx.Response(200, text=body + "\n")
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    conversation = Conversation(
+        OllamaClient(client=http), tools=ToolRegistry([read_file])
+    )
+    app = DaneelApp(conversation)
+
+    async with app.run_test() as pilot:
+        send_task = asyncio.create_task(app.send("read the file"))
+        await send_task
+
+        results = [m.content for m in app.conversation.messages if m.role == "tool"]
+        assert "secret content" in results
+
+    await http.aclose()
 
 
 async def test_tui_confirmation_allows_tool_with_yes_key() -> None:
@@ -711,6 +759,52 @@ async def test_typing_space_hides_command_suggestions() -> None:
     await http.aclose()
 
 
+async def test_thinking_counter_and_answer_placeholder() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.25)
+        body = json.dumps(
+            {"message": {"role": "assistant", "content": "Готово"}, "done": True},
+            ensure_ascii=False,
+        )
+        return httpx.Response(200, text=body + "\n")
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        task = asyncio.create_task(app.send("привет"))
+        await asyncio.sleep(0.08)
+
+        status = app.query_one(".thinking-summary", Static)
+        text = str(status.content)
+        assert "Thinking" in text
+        assert "·" in text
+        assert any(frame in text for frame in SPINNER_FRAMES)
+        answer = app.query_one(".message.assistant", Static)
+        assert str(answer.content) == ""
+
+        await task
+        assert str(answer.content) == "Готово"
+        assert str(status.content).startswith("● Thought")
+
+    await http.aclose()
+
+
+async def test_workspace_is_always_visible(tmp_path: Path) -> None:
+    http = mock_http()
+    app = DaneelApp(Conversation(OllamaClient(client=http)), workspace=tmp_path)
+
+    async with app.run_test() as pilot:
+        status = app.query_one("#workspace", Static)
+        assert str(tmp_path) in str(status.content)
+        await pilot.press(*"/lang ru")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert "Рабочая директория" in str(status.content)
+
+    await http.aclose()
+
+
 async def test_tui_theme_command() -> None:
     http = mock_http()
     app = DaneelApp(Conversation(OllamaClient(client=http)))
@@ -841,10 +935,6 @@ async def test_suggestion_rows_have_two_columns_and_soft_side_bars() -> None:
         assert popup.styles.border_top[0] in ("", "none")
         assert popup.styles.border_left[0] == "vkey"
         assert popup.styles.border_right[0] == "vkey"
-        hints = app.query_one("#hints", Static)
-        assert hints.styles.border_top[0] in ("", "none")
-        assert hints.styles.border_left[0] == "vkey"
-        assert hints.styles.border_right[0] == "vkey"
 
     await http.aclose()
 

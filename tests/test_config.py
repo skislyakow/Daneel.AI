@@ -1,7 +1,24 @@
 import json
+import os
 from pathlib import Path
 
-from daneel.config import Preferences, PreferencesStore, Settings
+from daneel.config import Preferences, PreferencesStore, Settings, load_env_file
+
+
+def test_env_file_loads_without_overriding(monkeypatch, tmp_path: Path) -> None:
+    path = tmp_path / ".env"
+    path.write_text(
+        "# comment\nDANEEL_MODEL=qwen3.5:4b\nDANEEL_ENABLE_FS_TOOLS=1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("DANEEL_MODEL", raising=False)
+    monkeypatch.delenv("DANEEL_ENABLE_FS_TOOLS", raising=False)
+    monkeypatch.setenv("DANEEL_MODEL", "real-env-model")
+
+    load_env_file(path)
+
+    assert os.environ["DANEEL_MODEL"] == "real-env-model"
+    assert os.environ["DANEEL_ENABLE_FS_TOOLS"] == "1"
 
 
 def test_defaults(tmp_path: Path, monkeypatch) -> None:
@@ -15,6 +32,7 @@ def test_defaults(tmp_path: Path, monkeypatch) -> None:
     assert settings.ui_language == "en"
     assert settings.reply_language == "auto"
     assert settings.theme == "daneel"
+    assert settings.enable_fs_tools is False
 
 
 def test_environment_overrides() -> None:
@@ -26,6 +44,7 @@ def test_environment_overrides() -> None:
             "DANEEL_LANG": "ru",
             "DANEEL_REPLY": "ru",
             "DANEEL_THEME": "dracula",
+            "DANEEL_ENABLE_FS_TOOLS": "1",
         }
     )
 
@@ -35,6 +54,12 @@ def test_environment_overrides() -> None:
     assert settings.ui_language == "ru"
     assert settings.reply_language == "ru"
     assert settings.theme == "dracula"
+    assert settings.enable_fs_tools is True
+
+
+def test_filesystem_tools_are_opt_in() -> None:
+    assert Settings.from_env({"DANEEL_ENABLE_FS_TOOLS": "false"}).enable_fs_tools is False
+    assert Settings.from_env({"DANEEL_ENABLE_FS_TOOLS": "yes"}).enable_fs_tools is True
 
 
 def test_cli_values_override_environment() -> None:

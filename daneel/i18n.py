@@ -29,9 +29,11 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
             "[dim]Type a message and press Enter. Ctrl+L clears the chat, "
             "Ctrl+T switches the interface language, Ctrl+C exits.[/]"
         ),
-        "hints": "Ctrl+T — Language · Ctrl+L — Clear · Ctrl+C — Quit",
         "prompt_placeholder": "Message... (Enter to send)",
-        "thinking": "thinking…",
+        "thinking": "Thinking",
+        "thinking_elapsed": "{spinner} Thinking · {duration}",
+        "thinking_summary": "● Thought · {duration}",
+        "workspace": "Workspace: {path}",
         "error_prefix": "Error",
         "connection_error": "Could not connect to Ollama. Check that the service is running.",
         "http_error": "Ollama returned an error: {detail}",
@@ -98,9 +100,11 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
             "[dim]Введите сообщение и нажмите Enter. Ctrl+L/Д очищает диалог, "
             "Ctrl+T/Е переключает язык интерфейса, Ctrl+C/С — выход.[/]"
         ),
-        "hints": "Ctrl+T — Язык · Ctrl+L — Очистить · Ctrl+C — Выход",
         "prompt_placeholder": "Сообщение... (Enter — отправить)",
-        "thinking": "думает…",
+        "thinking": "Думаю",
+        "thinking_elapsed": "{spinner} Думаю · {duration}",
+        "thinking_summary": "● Думал · {duration}",
+        "workspace": "Рабочая директория: {path}",
         "error_prefix": "Ошибка",
         "connection_error": "Не удалось подключиться к Ollama. Проверьте, запущен ли сервис.",
         "http_error": "Ollama вернул ошибку: {detail}",
@@ -170,6 +174,13 @@ STRINGS: Final[dict[UILanguage, dict[str, str]]] = {
 def t(lang: UILanguage, key: str, **values: object) -> str:
     """Return a localized string, substituting any named placeholders."""
     return STRINGS[lang][key].format(**values)
+
+
+def format_duration(ms: int) -> str:
+    """Format elapsed time as seconds, or minutes:seconds when over a minute."""
+    total_seconds = max(0, ms // 1000)
+    minutes, seconds = divmod(total_seconds, 60)
+    return f"{minutes}:{seconds:02d}" if minutes else f"{seconds}s"
 
 
 def build_system_prompt(reply_language: ReplyLanguage) -> str:

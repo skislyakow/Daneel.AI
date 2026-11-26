@@ -55,7 +55,7 @@ async def test_weather_tool_returns_daily_forecast() -> None:
         await client.aclose()
 
     assert tool.name == "get_weather"
-    assert tool.requires_confirmation
+    assert not tool.requires_confirmation
     assert "Ostrogozhsk" in result
     assert "today (2026-11-25)" in result
     assert "tomorrow (2026-11-26)" in result

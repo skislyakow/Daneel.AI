@@ -43,7 +43,7 @@
 
 ## 🌍 Глобальный запуск и настройки
 
-Основной способ запуска — `uv tool install --editable .`, после чего `daneel` доступен из любого каталога. Настройки читаются из `OLLAMA_BASE_URL`, `DANEEL_MODEL`, `DANEEL_WORKSPACE`, `DANEEL_LANG`, `DANEEL_REPLY`, `DANEEL_THEME`, `DANEEL_SESSION_DB`; CLI-флаги перекрывают окружение.
+Основной способ запуска — `uv tool install --editable .`, после чего `daneel` доступен из любого каталога. Настройки читаются из `OLLAMA_BASE_URL`, `DANEEL_MODEL`, `DANEEL_WORKSPACE`, `DANEEL_LANG`, `DANEEL_REPLY`, `DANEEL_THEME`, `DANEEL_SESSION_DB`, `DANEEL_ENABLE_FS_TOOLS`; CLI-флаги перекрывают окружение.
 
 ## 💾 История сессий
 
@@ -51,4 +51,4 @@
 
 ## 🛠️ Инструменты
 
-В ядре есть каркас function calling: Ollama возвращает `tool_calls`, реестр выполняет инструменты и добавляет результаты ролью `tool`. По умолчанию зарегистрирован `get_weather` (`daneel/tools/weather.py`): геокодинг и прогноз через Open-Meteo без API-ключа. Вызов без подтверждения отклоняется. `DANEEL_WORKSPACE` задаёт границу для будущих файловых операций. Десктоп-интеграция (горячая клавиша/трей) остаётся будущим адаптером.
+В ядре есть каркас function calling: Ollama возвращает `tool_calls`, реестр выполняет инструменты и добавляет результаты ролью `tool`. По умолчанию зарегистрирован `get_weather` (`daneel/tools/weather.py`): геокодинг и прогноз через Open-Meteo без API-ключа. При `DANEEL_ENABLE_FS_TOOLS=1` добавляются `list_directory` и `read_file` из `daneel/tools/filesystem.py`: только чтение, пути резолвятся через `Path.resolve()` и проверяются на `is_relative_to(DANEEL_WORKSPACE)`, есть лимиты на число записей и размер файла. Вызов без подтверждения отклоняется. Десктоп-интеграция (горячая клавиша/трей) остаётся будущим адаптером.

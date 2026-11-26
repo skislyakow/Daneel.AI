@@ -1,6 +1,7 @@
 from daneel.i18n import (
     STRINGS,
     build_system_prompt,
+    format_duration,
     resolve_reply_language,
     resolve_ui_language,
     t,
@@ -11,11 +12,10 @@ def test_locales_have_the_same_keys() -> None:
     assert set(STRINGS["en"]) == set(STRINGS["ru"])
 
 
-def test_russian_hints_use_only_latin_shortcuts() -> None:
-    assert (
-        STRINGS["ru"]["hints"]
-        == "Ctrl+T — Язык · Ctrl+L — Очистить · Ctrl+C — Выход"
-    )
+def test_format_duration() -> None:
+    assert format_duration(2_340) == "2s"
+    assert format_duration(65_000) == "1:05"
+    assert format_duration(0) == "0s"
 
 
 def test_resolve_ui_language() -> None:
