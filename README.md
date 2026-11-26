@@ -57,7 +57,7 @@ daneel --cli --lang ru --reply ru
 
 ## ⚙️ Configuration
 
-Settings are read from environment variables; CLI flags take precedence. A local `.env` file in the project root is loaded automatically on startup (real environment variables win). It is gitignored; see `.env` in the repository for the recommended values.
+Settings are read from environment variables; CLI flags take precedence. A local `.env` file in the project root is loaded automatically on startup (real environment variables win). It is gitignored; see `.env` for the recommended values. The sample `.env` intentionally does **not** set `DANEEL_WORKSPACE`, so the working directory follows wherever you launch `daneel`.
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
@@ -70,7 +70,7 @@ Settings are read from environment variables; CLI flags take precedence. A local
 | `DANEEL_SESSION_DB` | Path to the session SQLite database | platform-specific user data dir |
 | `DANEEL_ENABLE_FS_TOOLS` | Enable read-only filesystem tools (`1`/`true`/`yes`) | unset (disabled) |
 
-`DANEEL_WORKSPACE` is the safety boundary for tools that will read or change files. Since the agent can be started from anywhere, do not rely on the current directory for operations.
+`DANEEL_WORKSPACE` is the safety boundary for the read-only filesystem tools. By default it is the directory from which `daneel` was started — not the directory with the source code. Set it explicitly only if you want to pin every session to one folder.
 
 The interface language, reply mode, and theme are persisted in `settings.json` in the platform-specific user config directory (`platformdirs`). Changes made in the TUI are saved immediately. Explicit environment variables and CLI flags override the saved values **and become the new saved values**; when neither is provided, the saved values are used.
 
