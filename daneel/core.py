@@ -97,6 +97,11 @@ class OllamaClient:
         client: httpx.AsyncClient | None = None,
         timeout: float = 120.0,
         tools: Sequence[dict[str, Any]] | None = None,
+        think: bool = config.DEFAULT_THINK,
+        num_ctx: int = config.DEFAULT_NUM_CTX,
+        num_predict: int = config.DEFAULT_NUM_PREDICT,
+        temperature: float = config.DEFAULT_TEMPERATURE,
+        keep_alive: str = config.DEFAULT_KEEP_ALIVE,
     ) -> None:
         self.base_url = (
             config.DEFAULT_BASE_URL if base_url is None else base_url
@@ -104,8 +109,33 @@ class OllamaClient:
         self.model = config.DEFAULT_MODEL if model is None else model
         self.system_prompt = system_prompt
         self.tools = list(tools or [])
+        self.think = think
+        self.num_ctx = num_ctx
+        self.num_predict = num_predict
+        self.temperature = temperature
+        self.keep_alive = keep_alive
         self._client = client
         self._timeout = timeout
+
+    async def list_models(self) -> list[str]:
+        """Return installed model names from Ollama."""
+        owns_client = self._client is None
+        client = self._client or httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0, connect=5.0)
+        )
+        try:
+            response = await client.get(f"{self.base_url}/api/tags")
+            response.raise_for_status()
+            return [
+                str(item["name"])
+                for item in response.json().get("models", [])
+                if isinstance(item, dict) and item.get("name")
+            ]
+        except (httpx.HTTPError, ValueError):
+            return []
+        finally:
+            if owns_client:
+                await client.aclose()
 
     @classmethod
     def from_settings(
@@ -125,6 +155,11 @@ class OllamaClient:
             client=client,
             timeout=timeout,
             tools=tools,
+            think=settings.think,
+            num_ctx=settings.num_ctx,
+            num_predict=settings.num_predict,
+            temperature=settings.temperature,
+            keep_alive=settings.keep_alive,
         )
 
     async def chat_stream(self, history: Sequence[Message]) -> AsyncIterator[StreamEvent]:
@@ -136,6 +171,13 @@ class OllamaClient:
                 *(message.as_dict() for message in history),
             ],
             "stream": True,
+            "think": self.think,
+            "keep_alive": self.keep_alive,
+            "options": {
+                "num_ctx": self.num_ctx,
+                "num_predict": self.num_predict,
+                "temperature": self.temperature,
+            },
         }
         if self.tools:
             payload["tools"] = self.tools

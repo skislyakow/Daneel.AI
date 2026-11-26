@@ -59,6 +59,13 @@ async def test_stream_answer_accumulates_and_sends_history() -> None:
         ("assistant", "Привет"),
     ]
     assert seen[0]["stream"] is True
+    assert seen[0]["think"] is False
+    assert seen[0]["keep_alive"] == "30m"
+    assert seen[0]["options"] == {
+        "num_ctx": 4096,
+        "num_predict": 512,
+        "temperature": 0.4,
+    }
     assert seen[0]["messages"][0] == {
         "role": "system",
         "content": build_system_prompt(DEFAULT_REPLY_LANGUAGE),

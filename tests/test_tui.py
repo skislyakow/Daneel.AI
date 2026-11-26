@@ -7,6 +7,8 @@ import httpx
 import pyperclip
 import pytest
 from rich.text import Text
+from textual.events import MouseScrollUp
+from textual.containers import VerticalScroll
 from textual.widgets import OptionList, Static
 
 from daneel import clipboard
@@ -779,6 +781,7 @@ async def test_thinking_counter_and_answer_placeholder() -> None:
         text = str(status.content)
         assert "Thinking" in text
         assert "·" in text
+        assert app.conversation.client.model in text
         assert any(frame in text for frame in SPINNER_FRAMES)
         answer = app.query_one(".message.assistant", Static)
         assert str(answer.content) == ""
@@ -786,6 +789,39 @@ async def test_thinking_counter_and_answer_placeholder() -> None:
         await task
         assert str(answer.content) == "Готово"
         assert str(status.content).startswith("● Thought")
+        assert app.conversation.client.model in str(status.content)
+
+    await http.aclose()
+
+
+async def test_manual_scroll_disables_follow_and_latest_restores() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.2)
+        body = json.dumps(
+            {"message": {"role": "assistant", "content": "Готово"}, "done": True},
+            ensure_ascii=False,
+        )
+        return httpx.Response(200, text=body + "\n")
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        task = asyncio.create_task(app.send("привет"))
+        await asyncio.sleep(0.05)
+        log = app.query_one("#log", VerticalScroll)
+        app.post_message(MouseScrollUp(log, 0, 0, 0, -1, 0, False, False, False))
+        await pilot.pause()
+
+        assert app._follow_output is False
+        await task
+        assert app._follow_output is False
+
+        await pilot.press(*"/latest")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app._follow_output is True
+        assert log.is_vertical_scroll_end
 
     await http.aclose()
 
@@ -801,6 +837,76 @@ async def test_workspace_is_always_visible(tmp_path: Path) -> None:
         await pilot.press("enter")
         await pilot.pause()
         assert "Рабочая директория" in str(status.content)
+
+    await http.aclose()
+
+
+def mock_http_with_models() -> httpx.AsyncClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {"name": "qwen2.5:1.5b"},
+                        {"name": "qwen3.5:4b"},
+                    ]
+                },
+            )
+        body = json.dumps(
+            {"message": {"role": "assistant", "content": "Готово"}, "done": True},
+            ensure_ascii=False,
+        )
+        return httpx.Response(200, text=body + "\n")
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def test_model_palette_applies_choice(monkeypatch: pytest.MonkeyPatch) -> None:
+    http = mock_http_with_models()
+    app = DaneelApp(Conversation(OllamaClient(client=http)), auto_route=True)
+    notified = capture_notifications(monkeypatch, app)
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/model")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        popup = app.query_one("#suggestions", OptionList)
+        assert popup.option_count == 2
+
+        await pilot.press(*"qwen2")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.conversation.client.model == "qwen2.5:1.5b"
+        assert app.auto_route is False
+        assert "qwen2.5:1.5b" in str(app.query_one("#workspace", Static).content)
+        assert "Model: qwen2.5:1.5b" in notified
+
+    await http.aclose()
+
+
+async def test_think_and_router_commands() -> None:
+    http = mock_http_with_models()
+    app = DaneelApp(Conversation(OllamaClient(client=http)), think=True, auto_route=False)
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/think off")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.conversation.client.think is False
+
+        await pilot.press(*"/router auto")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.auto_route is True
+
+        await pilot.press(*"Привет")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+        assert app.conversation.client.model == "qwen2.5:1.5b"
 
     await http.aclose()
 

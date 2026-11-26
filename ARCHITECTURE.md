@@ -19,6 +19,7 @@
 * `daneel/storage.py` — SQLite-хранилище сессий: таблицы `sessions` и `messages`, внешний ключ и индекс по порядку сообщений.
 * `daneel/config.py` — настройки из окружения с приоритетом CLI-флагов.
 * `daneel/i18n.py` — локализация интерфейса, разрешение языка и сборка системного промпта.
+* `daneel/router.py` — эвристический выбор между лёгкой и тяжёлой моделью.
 * `daneel/theme.py` — фирменные темы, разрешение имени темы и регистрация в Textual.
 * `daneel/tools/` — контракт инструмента, реестр и обязательное подтверждение вызовов.
 * `daneel/tui.py` — терминальный интерфейс на Textual: многострочное поле ввода с динамической высотой, локализованные подсказки и команды.
@@ -43,7 +44,7 @@
 
 ## 🌍 Глобальный запуск и настройки
 
-Основной способ запуска — `uv tool install --editable .`, после чего `daneel` доступен из любого каталога. Настройки читаются из `OLLAMA_BASE_URL`, `DANEEL_MODEL`, `DANEEL_WORKSPACE`, `DANEEL_LANG`, `DANEEL_REPLY`, `DANEEL_THEME`, `DANEEL_SESSION_DB`, `DANEEL_ENABLE_FS_TOOLS`; CLI-флаги перекрывают окружение.
+Основной способ запуска — `uv tool install --editable .`, после чего `daneel` доступен из любого каталога. Настройки читаются из `OLLAMA_BASE_URL`, `DANEEL_MODEL`, `DANEEL_WORKSPACE`, `DANEEL_LANG`, `DANEEL_REPLY`, `DANEEL_THEME`, `DANEEL_SESSION_DB`, `DANEEL_ENABLE_FS_TOOLS`, `DANEEL_THINK`, `DANEEL_ROUTER` и параметры запроса; CLI-флаги перекрывают окружение.
 
 ## 💾 История сессий
 

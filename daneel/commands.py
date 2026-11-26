@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-ChoiceSource = Literal["themes", "sessions"]
+ChoiceSource = Literal["themes", "sessions", "models"]
 """Dynamic menus resolved by the interface when the command is opened."""
 
 
@@ -63,8 +63,22 @@ COMMANDS: tuple[Command, ...] = (
         ),
     ),
     Command("theme", "<name>", "help_theme", "themes"),
+    Command("model", "<name>", "help_model", "models"),
+    Command(
+        "think",
+        "on|off",
+        "help_think",
+        (Choice("on", "think_on"), Choice("off", "think_off")),
+    ),
+    Command(
+        "router",
+        "auto|manual",
+        "help_router",
+        (Choice("auto", "router_auto"), Choice("manual", "router_manual")),
+    ),
     Command("sessions", "", "help_sessions", "sessions"),
     Command("new", "", "help_new"),
+    Command("latest", "", "help_latest"),
     Command("clear", "", "help_clear"),
     Command(
         "copy",

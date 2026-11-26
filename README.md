@@ -35,7 +35,7 @@ Build a minimal working protocol between the user, the agent, and a local LLM, w
    uv run daneel --cli
    ```
 
-In the TUI: type into the multiline input (it grows with the content), **Enter** sends the whole message, **Shift+Enter** inserts a newline. **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. Typing `/` opens a command palette: the command name and a dimmed description are shown as two columns, filtered as you type. Use **Up/Down** to navigate and **Enter** (or a mouse click) to open the highlighted command's arguments; commands without arguments run immediately. In the argument palette, type a letter to filter the values, navigate with **Up/Down**, and press **Enter** to apply the value instantly — the input is cleared and the change takes effect without another command. **Escape** closes the palette. `/lang`, `/reply`, `/copy`, `/theme` (installed themes) and `/sessions` (saved sessions) use argument palettes; `/new` and `/clear` run right away. The command palette itself opens with `/`. Direct forms like `/lang ru` still work. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/sessions`, `/new`, `/clear`, `/copy [all|last]`. While the agent works, a dim golden animated counter (`◌ Thinking · 2s` / `◌ Думаю · 2с`) appears in the chat directly beneath the answer line; when the answer is done, the same line changes to a short summary (`● Thought · 2s` / `● Думал · 2с`). The current workspace directory is always visible at the bottom of the window.
+In the TUI: type into the multiline input (it grows with the content), **Enter** sends the whole message, **Shift+Enter** inserts a newline. **Ctrl+L** clears the chat, **Ctrl+T** switches the interface language, **Ctrl+C** exits. Under the Russian keyboard layout, the same physical keys work as **Ctrl+Д**, **Ctrl+Е** and **Ctrl+С**. Typing `/` opens a command palette: the command name and a dimmed description are shown as two columns, filtered as you type. Use **Up/Down** to navigate and **Enter** (or a mouse click) to open the highlighted command's arguments; commands without arguments run immediately. In the argument palette, type a letter to filter the values, navigate with **Up/Down**, and press **Enter** to apply the value instantly — the input is cleared and the change takes effect without another command. **Escape** closes the palette. `/lang`, `/reply`, `/copy`, `/theme` (installed themes) and `/sessions` (saved sessions) use argument palettes; `/new` and `/clear` run right away. The command palette itself opens with `/`. Direct forms like `/lang ru` still work. Local commands: `/lang en|ru`, `/reply auto|en|ru`, `/theme <name>`, `/model <name>`, `/think on|off`, `/router auto|manual`, `/sessions`, `/new`, `/latest`, `/clear`, `/copy [all|last]`. While the agent works, a dim golden animated counter (`◌ Thinking · qwen2.5:1.5b · 2s` / `◌ Думаю · qwen2.5:1.5b · 2с`) appears in the chat directly beneath the answer line; when the answer is done, the same line changes to a short summary (`● Thought · qwen2.5:1.5b · 2s` / `● Думал · qwen2.5:1.5b · 2с`). The current workspace directory, active model and routing mode are always visible at the bottom of the window. The chat follows new output automatically until you scroll it manually; use `/latest` to return to the newest message.
 
 ## 🌍 Run from anywhere
 
@@ -62,7 +62,13 @@ Settings are read from environment variables; CLI flags take precedence. A local
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `OLLAMA_BASE_URL` | Ollama API address | `http://localhost:11434` |
-| `DANEEL_MODEL` | Model name | `qwen2.5:1.5b` |
+| `DANEEL_MODEL` | Model name | `qwen3.5:4b` |
+| `DANEEL_THINK` | Reasoning mode (`on`/`off`) | `off` |
+| `DANEEL_ROUTER` | Model choice (`auto`/`manual`) | `auto` |
+| `DANEEL_NUM_CTX` | Request context size | `4096` |
+| `DANEEL_NUM_PREDICT` | Max generated tokens | `512` |
+| `DANEEL_TEMPERATURE` | Sampling temperature | `0.4` |
+| `DANEEL_KEEP_ALIVE` | How long Ollama keeps the model loaded | `30m` |
 | `DANEEL_WORKSPACE` | Root directory for future agent operations | current directory |
 | `DANEEL_LANG` | Interface language (`en`/`ru`) | `en` |
 | `DANEEL_REPLY` | Reply mode (`auto`/`en`/`ru`) | `auto` |
@@ -72,7 +78,18 @@ Settings are read from environment variables; CLI flags take precedence. A local
 
 `DANEEL_WORKSPACE` is the safety boundary for the read-only filesystem tools. By default it is the directory from which `daneel` was started — not the directory with the source code. Set it explicitly only if you want to pin every session to one folder.
 
-The interface language, reply mode, and theme are persisted in `settings.json` in the platform-specific user config directory (`platformdirs`). Changes made in the TUI are saved immediately. Explicit environment variables and CLI flags override the saved values **and become the new saved values**; when neither is provided, the saved values are used.
+The interface language, reply mode, theme, model, reasoning mode and router mode are persisted in `settings.json`. Changes made in the TUI are saved immediately. Explicit environment variables and CLI flags override the saved values **and become the new saved values**; when neither is provided, the saved values are used.
+
+## ⚡ Model choice and speed
+
+Requests are sent with `think: false`, a 4096-token context, a 512-token output cap, temperature 0.4 and `keep_alive: 30m`. This keeps the default `qwen3.5:4b` responsive while leaving tool support available.
+
+* `/model` opens a palette of installed models (from `GET /api/tags`); choosing one switches immediately and sets the router to manual.
+* `/think on|off` toggles reasoning without restarting — enable it for hard problems.
+* `/router auto|manual` controls the heuristic router. In `auto`, simple short messages go to `qwen2.5:1.5b`, while tool requests, code, long or complex messages go to `qwen3.5:4b`. Use `/model` to pin a model manually.
+* The bottom status line shows the current workspace and active model.
+
+The router is a cheap heuristic layer, not an LLM call, so it adds no latency. Tool calls always use the heavy model because the small one often ignores tools.
 
 ## 🌐 Languages
 
