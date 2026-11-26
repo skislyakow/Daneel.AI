@@ -15,6 +15,15 @@ TOOL_MARKERS = (
     "read ",
     "список",
     "directory",
+    "директор",
+    "текущ",
+    "pwd",
+    "getcwd",
+    "где мы",
+    "в какой",
+    "что в",
+    "покажи",
+    "открой",
     "папк",
     "каталог",
 )
@@ -33,6 +42,12 @@ COMPLEX_MARKERS = (
     "architecture",
     "рефактор",
     "refactor",
+    "умеешь",
+    "функционал",
+    "возможност",
+    "модель",
+    "model",
+    "capab",
 )
 CODE_MARKERS = ("```", "def ", "class ", "import ", "select ")
 COMPLEX_LENGTH = 240

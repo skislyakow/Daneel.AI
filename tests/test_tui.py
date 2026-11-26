@@ -7,6 +7,8 @@ import httpx
 import pyperclip
 import pytest
 from rich.text import Text
+from textual.events import MouseScrollUp
+from textual.containers import VerticalScroll
 from textual.widgets import OptionList, Static
 
 from daneel import clipboard
@@ -779,6 +781,7 @@ async def test_thinking_counter_and_answer_placeholder() -> None:
         text = str(status.content)
         assert "Thinking" in text
         assert "·" in text
+        assert app.conversation.client.model in text
         assert any(frame in text for frame in SPINNER_FRAMES)
         answer = app.query_one(".message.assistant", Static)
         assert str(answer.content) == ""
@@ -786,6 +789,39 @@ async def test_thinking_counter_and_answer_placeholder() -> None:
         await task
         assert str(answer.content) == "Готово"
         assert str(status.content).startswith("● Thought")
+        assert app.conversation.client.model in str(status.content)
+
+    await http.aclose()
+
+
+async def test_manual_scroll_disables_follow_and_latest_restores() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.2)
+        body = json.dumps(
+            {"message": {"role": "assistant", "content": "Готово"}, "done": True},
+            ensure_ascii=False,
+        )
+        return httpx.Response(200, text=body + "\n")
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    app = DaneelApp(Conversation(OllamaClient(client=http)))
+
+    async with app.run_test() as pilot:
+        task = asyncio.create_task(app.send("привет"))
+        await asyncio.sleep(0.05)
+        log = app.query_one("#log", VerticalScroll)
+        app.post_message(MouseScrollUp(log, 0, 0, 0, -1, 0, False, False, False))
+        await pilot.pause()
+
+        assert app._follow_output is False
+        await task
+        assert app._follow_output is False
+
+        await pilot.press(*"/latest")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app._follow_output is True
+        assert log.is_vertical_scroll_end
 
     await http.aclose()
 

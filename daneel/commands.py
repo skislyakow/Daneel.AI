@@ -78,6 +78,7 @@ COMMANDS: tuple[Command, ...] = (
     ),
     Command("sessions", "", "help_sessions", "sessions"),
     Command("new", "", "help_new"),
+    Command("latest", "", "help_latest"),
     Command("clear", "", "help_clear"),
     Command(
         "copy",

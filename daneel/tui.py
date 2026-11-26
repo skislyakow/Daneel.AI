@@ -12,7 +12,7 @@ from rich.text import Text
 from textual import events, on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.events import MouseDown
+from textual.events import MouseDown, MouseScrollDown, MouseScrollUp
 from textual.message import Message
 from textual.notifications import SeverityLevel
 from textual.screen import ModalScreen
@@ -309,6 +309,7 @@ class DaneelApp(App[None]):
         self._thinking_timer: Timer | None = None
         self._thinking_widget: Static | None = None
         self._thinking_frame = 0
+        self._follow_output = True
 
     def compose(self) -> ComposeResult:
         """Build the initial widget tree."""
@@ -358,6 +359,17 @@ class DaneelApp(App[None]):
             self._toast(t(self.lang, "tool_denied", name=name), severity="warning")
         return allowed
 
+    @on(MouseScrollUp, "#log")
+    @on(MouseScrollDown, "#log")
+    def user_scrolled_log(self) -> None:
+        """Stop following the stream once the user scrolls the chat manually."""
+        self._follow_output = False
+
+    async def jump_to_latest(self) -> None:
+        """Resume following the stream and scroll to the last message."""
+        self._follow_output = True
+        self.query_one("#log", VerticalScroll).scroll_end(animate=False)
+
     def _render_status(self) -> None:
         """Show the working directory and active model at the bottom."""
         if self._workspace is not None:
@@ -367,6 +379,10 @@ class DaneelApp(App[None]):
                     "workspace",
                     path=self.workspace,
                     model=self.conversation.client.model,
+                    route=t(
+                        self.lang,
+                        "router_auto" if self.auto_route else "router_manual",
+                    ),
                 )
             )
 
@@ -833,6 +849,8 @@ class DaneelApp(App[None]):
                 self._toast(t(self.lang, "usage_router"), severity="warning")
         elif name == "sessions":
             await self.show_menu("sessions")
+        elif name == "latest":
+            await self.jump_to_latest()
         elif name == "new":
             await self.action_clear()
             self.current_session_id = None
@@ -877,6 +895,7 @@ class DaneelApp(App[None]):
                 self.lang,
                 "thinking_elapsed",
                 spinner=spinner,
+                model=self.conversation.client.model,
                 duration=format_duration(elapsed),
             )
         )
@@ -909,6 +928,7 @@ class DaneelApp(App[None]):
         log = self.query_one("#log", VerticalScroll)
         self._busy = True
         prompt.disabled = True
+        self._follow_output = True
         start_len = len(self.conversation.messages)
 
         await log.mount(Static(escape(text), classes="message user"))
@@ -918,13 +938,15 @@ class DaneelApp(App[None]):
         status = Static("", classes="thinking-summary")
         await log.mount(status)
         self._start_thinking(status)
+        log.scroll_end(animate=False)
 
         received = ""
         try:
             async for chunk in self.conversation.stream_answer(text):
                 received += chunk
                 answer.update(escape(received))
-                log.scroll_end(animate=False)
+                if self._follow_output:
+                    log.scroll_end(animate=False)
         except OllamaError as exc:
             message = t(self.lang, exc.message_key, detail=exc.detail)
             self._transcript.append(f"{t(self.lang, 'error_prefix')}: {message}")
@@ -953,10 +975,14 @@ class DaneelApp(App[None]):
                 t(
                     self.lang,
                     "thinking_summary",
+                    model=self.conversation.client.model,
                     duration=format_duration(elapsed),
                 )
             )
-            log.scroll_end(animate=False)
+            if self._follow_output:
+                log.scroll_end(animate=False)
+            else:
+                self._toast(t(self.lang, "latest_ready"))
             prompt.focus()
 
     async def action_toggle_language(self) -> None:

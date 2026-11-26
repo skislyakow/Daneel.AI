@@ -17,3 +17,7 @@ def test_router_prefers_heavy_model_for_tools_and_complex_tasks() -> None:
     assert router.choose("Сравни эти два подхода и объясни подробно") == HEAVY_MODEL
     assert router.choose("Напиши функцию:\ndef foo(): pass") == HEAVY_MODEL
     assert router.choose("x" * 300) == HEAVY_MODEL
+    assert router.choose("что в текущей директории?") == HEAVY_MODEL
+    assert router.choose("где мы находимся?") == HEAVY_MODEL
+    assert router.choose("pwd") == HEAVY_MODEL
+    assert router.choose("у тебя есть функционал смены модели?") == HEAVY_MODEL
