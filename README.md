@@ -62,7 +62,13 @@ Settings are read from environment variables; CLI flags take precedence. A local
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `OLLAMA_BASE_URL` | Ollama API address | `http://localhost:11434` |
-| `DANEEL_MODEL` | Model name | `qwen2.5:1.5b` |
+| `DANEEL_MODEL` | Model name | `qwen3.5:4b` |
+| `DANEEL_THINK` | Reasoning mode (`on`/`off`) | `off` |
+| `DANEEL_ROUTER` | Model choice (`auto`/`manual`) | `auto` |
+| `DANEEL_NUM_CTX` | Request context size | `4096` |
+| `DANEEL_NUM_PREDICT` | Max generated tokens | `512` |
+| `DANEEL_TEMPERATURE` | Sampling temperature | `0.4` |
+| `DANEEL_KEEP_ALIVE` | How long Ollama keeps the model loaded | `30m` |
 | `DANEEL_WORKSPACE` | Root directory for future agent operations | current directory |
 | `DANEEL_LANG` | Interface language (`en`/`ru`) | `en` |
 | `DANEEL_REPLY` | Reply mode (`auto`/`en`/`ru`) | `auto` |
@@ -72,7 +78,18 @@ Settings are read from environment variables; CLI flags take precedence. A local
 
 `DANEEL_WORKSPACE` is the safety boundary for the read-only filesystem tools. By default it is the directory from which `daneel` was started — not the directory with the source code. Set it explicitly only if you want to pin every session to one folder.
 
-The interface language, reply mode, and theme are persisted in `settings.json` in the platform-specific user config directory (`platformdirs`). Changes made in the TUI are saved immediately. Explicit environment variables and CLI flags override the saved values **and become the new saved values**; when neither is provided, the saved values are used.
+The interface language, reply mode, theme, model, reasoning mode and router mode are persisted in `settings.json`. Changes made in the TUI are saved immediately. Explicit environment variables and CLI flags override the saved values **and become the new saved values**; when neither is provided, the saved values are used.
+
+## ⚡ Model choice and speed
+
+Requests are sent with `think: false`, a 4096-token context, a 512-token output cap, temperature 0.4 and `keep_alive: 30m`. This keeps the default `qwen3.5:4b` responsive while leaving tool support available.
+
+* `/model` opens a palette of installed models (from `GET /api/tags`); choosing one switches immediately and sets the router to manual.
+* `/think on|off` toggles reasoning without restarting — enable it for hard problems.
+* `/router auto|manual` controls the heuristic router. In `auto`, simple short messages go to `qwen2.5:1.5b`, while tool requests, code, long or complex messages go to `qwen3.5:4b`. Use `/model` to pin a model manually.
+* The bottom status line shows the current workspace and active model.
+
+The router is a cheap heuristic layer, not an LLM call, so it adds no latency. Tool calls always use the heavy model because the small one often ignores tools.
 
 ## 🌐 Languages
 

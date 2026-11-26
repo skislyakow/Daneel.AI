@@ -80,6 +80,23 @@ def main() -> None:
         default=None,
         help="Textual theme name (overrides DANEEL_THEME)",
     )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Ollama model name (overrides DANEEL_MODEL)",
+    )
+    parser.add_argument(
+        "--think",
+        choices=("on", "off"),
+        default=None,
+        help="reasoning mode (overrides DANEEL_THINK)",
+    )
+    parser.add_argument(
+        "--router",
+        choices=("auto", "manual"),
+        default=None,
+        help="model selection mode (overrides DANEEL_ROUTER)",
+    )
     args = parser.parse_args()
 
     load_env_file()
@@ -87,15 +104,25 @@ def main() -> None:
     settings = Settings.from_env(
         os.environ, preferences=preferences.preferences.with_environment(os.environ)
     )
-    remember: dict[str, str] = {}
+    remember: dict[str, object] = {}
     if any(
         key in os.environ
-        for key in ("DANEEL_LANG", "DANEEL_REPLY", "DANEEL_THEME")
+        for key in (
+            "DANEEL_LANG",
+            "DANEEL_REPLY",
+            "DANEEL_THEME",
+            "DANEEL_MODEL",
+            "DANEEL_THINK",
+            "DANEEL_ROUTER",
+        )
     ):
         remember = {
             "ui_language": settings.ui_language,
             "reply_language": settings.reply_language,
             "theme": settings.theme,
+            "model": settings.model,
+            "think": settings.think,
+            "auto_route": settings.auto_route,
         }
     if args.lang:
         settings = settings.with_overrides(ui_language=resolve_ui_language(args.lang))
@@ -108,6 +135,15 @@ def main() -> None:
     if args.theme:
         settings = settings.with_overrides(theme=args.theme)
         remember["theme"] = settings.theme
+    if args.model:
+        settings = settings.with_overrides(model=args.model)
+        remember["model"] = settings.model
+    if args.think:
+        settings = settings.with_overrides(think=args.think == "on")
+        remember["think"] = settings.think
+    if args.router:
+        settings = settings.with_overrides(auto_route=args.router == "auto")
+        remember["auto_route"] = settings.auto_route
     if remember:
         preferences.update(**remember)
 
@@ -137,6 +173,8 @@ def main() -> None:
             store=store,
             preferences=preferences,
             workspace=settings.workspace,
+            think=settings.think,
+            auto_route=settings.auto_route,
         ).run()
 
 

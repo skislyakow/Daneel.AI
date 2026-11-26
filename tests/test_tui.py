@@ -805,6 +805,76 @@ async def test_workspace_is_always_visible(tmp_path: Path) -> None:
     await http.aclose()
 
 
+def mock_http_with_models() -> httpx.AsyncClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {"name": "qwen2.5:1.5b"},
+                        {"name": "qwen3.5:4b"},
+                    ]
+                },
+            )
+        body = json.dumps(
+            {"message": {"role": "assistant", "content": "Готово"}, "done": True},
+            ensure_ascii=False,
+        )
+        return httpx.Response(200, text=body + "\n")
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def test_model_palette_applies_choice(monkeypatch: pytest.MonkeyPatch) -> None:
+    http = mock_http_with_models()
+    app = DaneelApp(Conversation(OllamaClient(client=http)), auto_route=True)
+    notified = capture_notifications(monkeypatch, app)
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/model")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        popup = app.query_one("#suggestions", OptionList)
+        assert popup.option_count == 2
+
+        await pilot.press(*"qwen2")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.conversation.client.model == "qwen2.5:1.5b"
+        assert app.auto_route is False
+        assert "qwen2.5:1.5b" in str(app.query_one("#workspace", Static).content)
+        assert "Model: qwen2.5:1.5b" in notified
+
+    await http.aclose()
+
+
+async def test_think_and_router_commands() -> None:
+    http = mock_http_with_models()
+    app = DaneelApp(Conversation(OllamaClient(client=http)), think=True, auto_route=False)
+
+    async with app.run_test() as pilot:
+        await pilot.press(*"/think off")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.conversation.client.think is False
+
+        await pilot.press(*"/router auto")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.auto_route is True
+
+        await pilot.press(*"Привет")
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+        assert app.conversation.client.model == "qwen2.5:1.5b"
+
+    await http.aclose()
+
+
 async def test_tui_theme_command() -> None:
     http = mock_http()
     app = DaneelApp(Conversation(OllamaClient(client=http)))

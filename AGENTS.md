@@ -22,7 +22,7 @@
 - Интерфейс живёт в `daneel/tui.py`, логика Ollama и история — в `daneel/core.py`. Не переноси HTTP-код в TUI.
 - Строки интерфейса, разрешение языка и системный промпт находятся в `daneel/i18n.py`.
 - Ответы Ollama потоковые (`stream: true`); новые адаптеры должны потреблять `Conversation.stream_answer()`.
-- Настройки окружения (`OLLAMA_BASE_URL`, `DANEEL_MODEL`, `DANEEL_WORKSPACE`, `DANEEL_LANG`, `DANEEL_REPLY`, `DANEEL_THEME`, `DANEEL_SESSION_DB`, `DANEEL_ENABLE_FS_TOOLS`) собираются в `daneel/config.py`; CLI-флаги имеют приоритет. Локальный `.env` в корне проекта загружается автоматически, но реальные переменные окружения его перекрывают; `.env` в git не коммитится; в нём намеренно не задаётся `DANEEL_WORKSPACE`, чтобы рабочая директория была каталогом запуска. Язык интерфейса, язык ответов и тема сохраняются в `settings.json` из user config dir (`platformdirs`); изменения из TUI и явные env/CLI-значения перезаписывают файл.
+- Настройки окружения (`OLLAMA_BASE_URL`, `DANEEL_MODEL`, `DANEEL_WORKSPACE`, `DANEEL_LANG`, `DANEEL_REPLY`, `DANEEL_THEME`, `DANEEL_SESSION_DB`, `DANEEL_ENABLE_FS_TOOLS`, `DANEEL_THINK`, `DANEEL_ROUTER`, `DANEEL_NUM_CTX`, `DANEEL_NUM_PREDICT`, `DANEEL_TEMPERATURE`, `DANEEL_KEEP_ALIVE`) собираются в `daneel/config.py`; CLI-флаги имеют приоритет. Локальный `.env` в корне проекта загружается автоматически, но реальные переменные окружения его перекрывают; `.env` в git не коммитится; в нём намеренно не задаётся `DANEEL_WORKSPACE`, чтобы рабочая директория была каталогом запуска. Язык интерфейса, язык ответов, тема, модель, режим думания и режим роутера сохраняются в `settings.json` из user config dir (`platformdirs`); изменения из TUI и явные env/CLI-значения перезаписывают файл.
 - История сессий — в `daneel/storage.py` (SQLite); SQL только в этом модуле, автосохранение после каждого обмена.
 - Темы описаны в `daneel/theme.py`: фирменные `daneel`/`daneel-light` плюс встроенные Textual. Шрифт задаёт терминал — приложение его не меняет.
 - Инструменты описаны в `daneel/tools/`; по умолчанию включён `tools/weather.py` (`get_weather`, Open-Meteo без ключа), при `DANEEL_ENABLE_FS_TOOLS=1` добавляются `tools/filesystem.py` (`list_directory`, `read_file`) — только чтение в границах workspace. Встроенные инструменты выполняются без подтверждения (`requires_confirmation=False`). Реестр всё равно поддерживает обязательное подтверждение для будущих инструментов: `ToolRegistry.call()` отклоняет вызов без подтверждения, если инструмент сам этого требует.
@@ -35,3 +35,6 @@
 ## Стандарты кода
 
 Полный свод правил — `CODING_STANDARDS.md`. При расхождении с этой шпаргалкой приоритет у него.
+
+- Запросы уходят с `think: false`, `options(num_ctx=4096, num_predict=512, temperature=0.4)` и `keep_alive=30m`; это ускоряет отклик.
+- `/model` — палитра моделей из `/api/tags`, `/think on|off` — рассуждения, `/router auto|manual` — эвристический выбор между `qwen2.5:1.5b` и `qwen3.5:4b`. Ручной `/model` отключает авто-роутер до `/router auto`. Инструменты всегда идут на тяжёлую модель.

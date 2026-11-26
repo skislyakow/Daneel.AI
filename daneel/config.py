@@ -19,9 +19,19 @@ from .i18n import (
 from .theme import DEFAULT_THEME, resolve_theme
 
 DEFAULT_BASE_URL = "http://localhost:11434"
-DEFAULT_MODEL = "qwen2.5:1.5b"
+LIGHT_MODEL = "qwen2.5:1.5b"
+HEAVY_MODEL = "qwen3.5:4b"
+DEFAULT_MODEL = HEAVY_MODEL
+DEFAULT_THINK = False
+DEFAULT_AUTO_ROUTE = True
+DEFAULT_NUM_CTX = 4096
+DEFAULT_NUM_PREDICT = 512
+DEFAULT_TEMPERATURE = 0.4
+DEFAULT_KEEP_ALIVE = "30m"
 DB_FILENAME = "sessions.sqlite3"
 PREFERENCES_FILENAME = "settings.json"
+
+TRUE_VALUES = {"1", "true", "yes", "on"}
 
 
 def default_db_path() -> Path:
@@ -52,6 +62,14 @@ def load_env_file(path: Path | None = None) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
+def _as_bool(value: object, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in TRUE_VALUES
+    return default
+
+
 @dataclass(slots=True)
 class Preferences:
     """User preferences changed from the interface and kept between runs."""
@@ -59,6 +77,9 @@ class Preferences:
     ui_language: UILanguage = "en"
     reply_language: ReplyLanguage = "auto"
     theme: str = DEFAULT_THEME
+    model: str = DEFAULT_MODEL
+    think: bool = DEFAULT_THINK
+    auto_route: bool = DEFAULT_AUTO_ROUTE
 
     @classmethod
     def from_dict(cls, data: object) -> Preferences:
@@ -68,24 +89,32 @@ class Preferences:
         ui = data.get("ui_language")
         reply = data.get("reply_language")
         theme = data.get("theme")
+        model = data.get("model")
         return cls(
             ui_language=resolve_ui_language(ui if isinstance(ui, str) else None),
             reply_language=resolve_reply_language(
                 reply if isinstance(reply, str) else None
             ),
             theme=resolve_theme(theme if isinstance(theme, str) else None),
+            model=model.strip() if isinstance(model, str) and model.strip() else DEFAULT_MODEL,
+            think=_as_bool(data.get("think"), DEFAULT_THINK),
+            auto_route=_as_bool(data.get("auto_route"), DEFAULT_AUTO_ROUTE),
         )
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, object]:
         """Return a JSON-serializable representation."""
         return {
             "ui_language": self.ui_language,
             "reply_language": self.reply_language,
             "theme": self.theme,
+            "model": self.model,
+            "think": self.think,
+            "auto_route": self.auto_route,
         }
 
     def with_environment(self, environ: Mapping[str, str]) -> Preferences:
         """Apply explicitly set environment variables over stored values."""
+        model = environ.get("DANEEL_MODEL")
         return Preferences(
             ui_language=(
                 resolve_ui_language(environ.get("DANEEL_LANG"))
@@ -102,6 +131,17 @@ class Preferences:
                 if "DANEEL_THEME" in environ
                 else self.theme
             ),
+            model=model.strip() if model and model.strip() else self.model,
+            think=(
+                _as_bool(environ.get("DANEEL_THINK"), DEFAULT_THINK)
+                if "DANEEL_THINK" in environ
+                else self.think
+            ),
+            auto_route=(
+                _as_bool(environ.get("DANEEL_ROUTER"), DEFAULT_AUTO_ROUTE)
+                if "DANEEL_ROUTER" in environ
+                else self.auto_route
+            ),
         )
 
     def with_overrides(
@@ -109,12 +149,18 @@ class Preferences:
         ui_language: UILanguage | None = None,
         reply_language: ReplyLanguage | None = None,
         theme: str | None = None,
+        model: str | None = None,
+        think: bool | None = None,
+        auto_route: bool | None = None,
     ) -> Preferences:
         """Apply CLI or interface values over stored values."""
         return Preferences(
             ui_language=ui_language or self.ui_language,
             reply_language=reply_language or self.reply_language,
             theme=resolve_theme(theme, self.theme) if theme else self.theme,
+            model=model.strip() if model and model.strip() else self.model,
+            think=self.think if think is None else think,
+            auto_route=self.auto_route if auto_route is None else auto_route,
         )
 
 
@@ -135,7 +181,7 @@ class PreferencesStore:
             return cls(target)
         return cls(target, Preferences.from_dict(data))
 
-    def update(self, **changes: str) -> None:
+    def update(self, **changes: object) -> None:
         """Merge changes and write them to disk."""
         self.preferences = self.preferences.with_overrides(**changes)
         self.save()
@@ -163,6 +209,12 @@ class Settings:
     theme: str = DEFAULT_THEME
     session_db: Path = field(default_factory=default_db_path)
     enable_fs_tools: bool = False
+    think: bool = DEFAULT_THINK
+    auto_route: bool = DEFAULT_AUTO_ROUTE
+    num_ctx: int = DEFAULT_NUM_CTX
+    num_predict: int = DEFAULT_NUM_PREDICT
+    temperature: float = DEFAULT_TEMPERATURE
+    keep_alive: str = DEFAULT_KEEP_ALIVE
 
     @classmethod
     def from_env(
@@ -175,7 +227,8 @@ class Settings:
         prefs = (preferences or Preferences()).with_environment(env)
         return cls(
             base_url=env.get("OLLAMA_BASE_URL", DEFAULT_BASE_URL).rstrip("/"),
-            model=env.get("DANEEL_MODEL", DEFAULT_MODEL),
+            model=env.get("DANEEL_MODEL")
+            or (prefs.model if preferences is not None else DEFAULT_MODEL),
             workspace=Path(env.get("DANEEL_WORKSPACE", str(Path.cwd()))).expanduser(),
             ui_language=prefs.ui_language,
             reply_language=prefs.reply_language,
@@ -184,7 +237,13 @@ class Settings:
                 env.get("DANEEL_SESSION_DB", str(default_db_path()))
             ).expanduser(),
             enable_fs_tools=env.get("DANEEL_ENABLE_FS_TOOLS", "").lower()
-            in {"1", "true", "yes"},
+            in TRUE_VALUES,
+            think=prefs.think,
+            auto_route=prefs.auto_route,
+            num_ctx=int(env.get("DANEEL_NUM_CTX", str(DEFAULT_NUM_CTX))),
+            num_predict=int(env.get("DANEEL_NUM_PREDICT", str(DEFAULT_NUM_PREDICT))),
+            temperature=float(env.get("DANEEL_TEMPERATURE", str(DEFAULT_TEMPERATURE))),
+            keep_alive=env.get("DANEEL_KEEP_ALIVE", DEFAULT_KEEP_ALIVE),
         )
 
     def with_overrides(
@@ -192,15 +251,24 @@ class Settings:
         ui_language: UILanguage | None = None,
         reply_language: ReplyLanguage | None = None,
         theme: str | None = None,
+        model: str | None = None,
+        think: bool | None = None,
+        auto_route: bool | None = None,
     ) -> Settings:
         """Return a copy with CLI values overriding the environment."""
         return Settings(
             base_url=self.base_url,
-            model=self.model,
+            model=model.strip() if model and model.strip() else self.model,
             workspace=self.workspace,
             ui_language=ui_language or self.ui_language,
             reply_language=reply_language or self.reply_language,
             theme=resolve_theme(theme, self.theme) if theme else self.theme,
             session_db=self.session_db,
             enable_fs_tools=self.enable_fs_tools,
+            think=self.think if think is None else think,
+            auto_route=self.auto_route if auto_route is None else auto_route,
+            num_ctx=self.num_ctx,
+            num_predict=self.num_predict,
+            temperature=self.temperature,
+            keep_alive=self.keep_alive,
         )

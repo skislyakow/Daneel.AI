@@ -27,12 +27,18 @@ def test_defaults(tmp_path: Path, monkeypatch) -> None:
     settings = Settings.from_env({})
 
     assert settings.base_url == "http://localhost:11434"
-    assert settings.model == "qwen2.5:1.5b"
+    assert settings.model == "qwen3.5:4b"
     assert settings.workspace == tmp_path
     assert settings.ui_language == "en"
     assert settings.reply_language == "auto"
     assert settings.theme == "daneel"
     assert settings.enable_fs_tools is False
+    assert settings.think is False
+    assert settings.auto_route is True
+    assert settings.num_ctx == 4096
+    assert settings.num_predict == 512
+    assert settings.temperature == 0.4
+    assert settings.keep_alive == "30m"
 
 
 def test_environment_overrides() -> None:
@@ -45,6 +51,9 @@ def test_environment_overrides() -> None:
             "DANEEL_REPLY": "ru",
             "DANEEL_THEME": "dracula",
             "DANEEL_ENABLE_FS_TOOLS": "1",
+            "DANEEL_THINK": "on",
+            "DANEEL_ROUTER": "manual",
+            "DANEEL_NUM_CTX": "8192",
         }
     )
 
@@ -55,6 +64,9 @@ def test_environment_overrides() -> None:
     assert settings.reply_language == "ru"
     assert settings.theme == "dracula"
     assert settings.enable_fs_tools is True
+    assert settings.think is True
+    assert settings.auto_route is False
+    assert settings.num_ctx == 8192
 
 
 def test_filesystem_tools_are_opt_in() -> None:
@@ -82,15 +94,30 @@ def test_preferences_round_trip(tmp_path: Path) -> None:
     path = tmp_path / "settings.json"
     store = PreferencesStore(path)
 
-    store.update(ui_language="ru", reply_language="ru", theme="dracula")
+    store.update(
+        ui_language="ru",
+        reply_language="ru",
+        theme="dracula",
+        model="qwen2.5:1.5b",
+        think=True,
+        auto_route=False,
+    )
 
     assert json.loads(path.read_text(encoding="utf-8")) == {
         "ui_language": "ru",
         "reply_language": "ru",
         "theme": "dracula",
+        "model": "qwen2.5:1.5b",
+        "think": True,
+        "auto_route": False,
     }
     assert PreferencesStore.load(path).preferences == Preferences(
-        ui_language="ru", reply_language="ru", theme="dracula"
+        ui_language="ru",
+        reply_language="ru",
+        theme="dracula",
+        model="qwen2.5:1.5b",
+        think=True,
+        auto_route=False,
     )
 
 

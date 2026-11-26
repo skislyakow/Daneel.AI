@@ -25,6 +25,7 @@ from .commands import COMMANDS, Command, MenuEntry, command_named, matching_comm
 from .config import PreferencesStore
 from .confirmation import install_confirmation, render_arguments
 from .core import Conversation, Message as ChatMessage, OllamaError
+from .router import ModelRouter
 from .i18n import ReplyLanguage, UILanguage, build_system_prompt, format_duration, t
 from .storage import SessionStore
 from .theme import available_themes, register_themes
@@ -279,6 +280,9 @@ class DaneelApp(App[None]):
         store: SessionStore | None = None,
         preferences: PreferencesStore | None = None,
         workspace: Path | None = None,
+        think: bool = False,
+        auto_route: bool = True,
+        router: ModelRouter | None = None,
     ) -> None:
         super().__init__()
         self.conversation = conversation
@@ -288,6 +292,10 @@ class DaneelApp(App[None]):
         self.store = store or SessionStore(":memory:")
         self.preferences = preferences
         self.workspace = workspace or Path.cwd()
+        self.think = think
+        self.auto_route = auto_route
+        self.router = router or ModelRouter()
+        self._model_choices: list[MenuEntry] | None = None
         self.current_session_id: int | None = None
         self._busy = False
         self._welcome: Static | None = None
@@ -313,9 +321,7 @@ class DaneelApp(App[None]):
             yield PromptInput(
                 placeholder=t(self.lang, "prompt_placeholder"), id="prompt"
             )
-            self._workspace = Static(
-                t(self.lang, "workspace", path=self.workspace), id="workspace"
-            )
+            self._workspace = Static("", id="workspace")
             yield self._workspace
 
     def get_theme_variable_defaults(self) -> dict[str, str]:
@@ -352,14 +358,23 @@ class DaneelApp(App[None]):
             self._toast(t(self.lang, "tool_denied", name=name), severity="warning")
         return allowed
 
+    def _render_status(self) -> None:
+        """Show the working directory and active model at the bottom."""
+        if self._workspace is not None:
+            self._workspace.update(
+                t(
+                    self.lang,
+                    "workspace",
+                    path=self.workspace,
+                    model=self.conversation.client.model,
+                )
+            )
+
     def _apply_language(self) -> None:
         """Update language-dependent widgets and key bindings."""
         if self._welcome is not None:
             self._welcome.update(t(self.lang, "welcome"))
-        if self._workspace is not None:
-            self._workspace.update(
-                t(self.lang, "workspace", path=self.workspace)
-            )
+        self._render_status()
         self.query_one("#prompt", PromptInput).placeholder = t(
             self.lang, "prompt_placeholder"
         )
@@ -396,7 +411,7 @@ class DaneelApp(App[None]):
         else:
             self._toast(t(self.lang, "nothing_selected"), severity="warning")
 
-    def _remember(self, **changes: str) -> None:
+    def _remember(self, **changes: object) -> None:
         """Persist a preference changed from the interface."""
         if self.preferences is not None:
             self.preferences.update(**changes)
@@ -489,7 +504,16 @@ class DaneelApp(App[None]):
             for command in COMMANDS
         ]
 
-    def show_menu(self, name: str) -> None:
+    async def _load_model_choices(self) -> list[MenuEntry]:
+        """Fetch installed model names from Ollama."""
+        names = await self.conversation.client.list_models()
+        if not names:
+            self._toast(t(self.lang, "models_unavailable"), severity="warning")
+            return []
+        self._model_choices = [MenuEntry(name, name) for name in names]
+        return self._model_choices
+
+    async def show_menu(self, name: str) -> None:
         """Open a command's argument list."""
         command = command_named(name)
         if command is None:
@@ -498,6 +522,9 @@ class DaneelApp(App[None]):
         if command.choices == "sessions" and not self.store.list_sessions(limit=20):
             prompt.clear()
             self._toast(t(self.lang, "sessions_empty"), severity="warning")
+            return
+        if command.choices == "models" and not await self._load_model_choices():
+            prompt.clear()
             return
         self._suggestions = []
         self._active_command = command
@@ -515,6 +542,8 @@ class DaneelApp(App[None]):
                 MenuEntry(str(session.id), f"#{session.id} {session.title}")
                 for session in self.store.list_sessions(limit=20)
             ]
+        if command.choices == "models":
+            return self._model_choices or []
         return [
             MenuEntry(choice.value, t(self.lang, choice.label_key))
             for choice in (command.choices or ())
@@ -610,6 +639,8 @@ class DaneelApp(App[None]):
         prompt.clear()
         prompt.insert(command.insert_text)
         prompt.cursor_location = (0, len(command.insert_text))
+        if command.choices == "models" and not self._model_choices:
+            await self._load_model_choices()
         self._update_suggestions(prompt.text)
         return True
 
@@ -759,8 +790,49 @@ class DaneelApp(App[None]):
                     t(self.lang, "theme_unknown", theme=argument),
                     severity="warning",
                 )
+        elif name == "model":
+            if not argument:
+                await self.show_menu("model")
+            elif argument.startswith("<"):
+                self._toast(t(self.lang, "usage_model"), severity="warning")
+            else:
+                self.conversation.client.model = argument
+                self.auto_route = False
+                self._remember(model=argument, auto_route=False)
+                self._render_status()
+                self._toast(t(self.lang, "model_changed", model=argument))
+        elif name == "think":
+            if argument in {"on", "вкл"}:
+                self.think = True
+                self.conversation.client.think = True
+                self._remember(think=True)
+                self._toast(t(self.lang, "think_changed", mode=t(self.lang, "think_on")))
+            elif argument in {"off", "выкл"}:
+                self.think = False
+                self.conversation.client.think = False
+                self._remember(think=False)
+                self._toast(
+                    t(self.lang, "think_changed", mode=t(self.lang, "think_off"))
+                )
+            else:
+                self._toast(t(self.lang, "usage_think"), severity="warning")
+        elif name == "router":
+            if argument in {"auto", "авто"}:
+                self.auto_route = True
+                self._remember(auto_route=True)
+                self._toast(
+                    t(self.lang, "router_changed", mode=t(self.lang, "router_auto"))
+                )
+            elif argument in {"manual", "вручную"}:
+                self.auto_route = False
+                self._remember(auto_route=False)
+                self._toast(
+                    t(self.lang, "router_changed", mode=t(self.lang, "router_manual"))
+                )
+            else:
+                self._toast(t(self.lang, "usage_router"), severity="warning")
         elif name == "sessions":
-            self.show_menu("sessions")
+            await self.show_menu("sessions")
         elif name == "new":
             await self.action_clear()
             self.current_session_id = None
@@ -830,6 +902,9 @@ class DaneelApp(App[None]):
 
     async def send(self, text: str) -> None:
         """Send a message and render the streaming answer."""
+        if self.auto_route:
+            self.conversation.client.model = self.router.choose(text)
+            self._render_status()
         prompt = self.query_one("#prompt", PromptInput)
         log = self.query_one("#log", VerticalScroll)
         self._busy = True
